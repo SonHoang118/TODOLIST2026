@@ -100,19 +100,32 @@ export async function ensureTasksTable(): Promise<void> {
     )
   `;
 
-  await sql`ALTER TABLE schedule_tasks DROP CONSTRAINT IF EXISTS schedule_tasks_owner_required`;
   await sql`ALTER TABLE schedule_tasks ALTER COLUMN owner_user_id DROP NOT NULL`;
   await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS schedule_scope VARCHAR(20) NOT NULL DEFAULT 'USER'`;
   await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL`;
   await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS updated_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL`;
   await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS confirmed_by_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb`;
   await sql`
-    ALTER TABLE schedule_tasks
-    ADD CONSTRAINT schedule_tasks_owner_required
-    CHECK (
-      (schedule_scope = 'COMPANY' AND owner_user_id IS NULL)
-      OR (schedule_scope = 'USER' AND owner_user_id IS NOT NULL)
-    )
+    UPDATE schedule_tasks
+    SET schedule_scope = 'USER'
+    WHERE schedule_scope IS NULL
+  `;
+  await sql`
+    DO $$
+    BEGIN
+      BEGIN
+        ALTER TABLE schedule_tasks
+        ADD CONSTRAINT schedule_tasks_owner_required
+        CHECK (
+          (schedule_scope = 'COMPANY' AND owner_user_id IS NULL)
+          OR (schedule_scope = 'USER' AND owner_user_id IS NOT NULL)
+        );
+      EXCEPTION
+        WHEN duplicate_object THEN
+          NULL;
+      END;
+    END
+    $$;
   `;
 }
 
