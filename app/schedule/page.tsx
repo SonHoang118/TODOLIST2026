@@ -80,9 +80,8 @@ export default function SchedulePage() {
   zoomRef.current     = zoomLevel;
 
   // Saved state for scroll-position preservation during zoom
-  const pinchZoomBeforeRef   = useRef(1);
-  const pinchScrollTopRef    = useRef(0);
-  const pinchCenterYRef      = useRef(0);
+  // (approach: compute desiredScrollTop directly from pinch-start anchor each step)
+  const desiredScrollTopRef = useRef<number | null>(null);
 
   const taskIdRef    = useRef(0);
   const colorRef     = useRef(0);
@@ -121,6 +120,9 @@ export default function SchedulePage() {
     isPinching: false,
     pinchDist0: 0,
     pinchZoom0: 1,  // zoom at pinch-gesture start, fixed until next pinch
+    pinchScrollTop0: 0,  // scrollTop when pinch started
+    pinchScreenY0: 0,    // initial midpoint screen-Y, the content anchor
+    pinchRectTop: 0,     // container rect.top at pinch start
     timer: null as ReturnType<typeof setTimeout> | null,
     draggingTaskId:   null as number | null,
     resizeTaskId:     null as number | null,
@@ -150,19 +152,12 @@ export default function SchedulePage() {
     return { dayIndex: day, slotIndex: slot };
   };
 
-  // Adjust scrollTop after zoom to keep the pinch center fixed in the viewport
+  // Apply pre-computed scroll position after zoom re-render
   useLayoutEffect(() => {
     const container = scrollRef.current;
-    if (!container) return;
-    const rect         = container.getBoundingClientRect();
-    const oldEffSlotH  = SLOT_H * pinchZoomBeforeRef.current;
-    const newEffSlotH  = SLOT_H * zoomLevel;
-    if (oldEffSlotH === newEffSlotH) return;
-    const pinchScreenY  = pinchCenterYRef.current;
-    const slotsAtPinch  = (pinchScrollTopRef.current + pinchScreenY - rect.top - HEADER_H) / oldEffSlotH;
-    const newScrollTop  = HEADER_H + slotsAtPinch * newEffSlotH - (pinchScreenY - rect.top);
-    container.scrollTop = Math.max(0, newScrollTop);
-    // Note: pinchZoomBeforeRef is updated in onMove before each setZoomLevel call, not here
+    if (!container || desiredScrollTopRef.current === null) return;
+    container.scrollTop = desiredScrollTopRef.current;
+    desiredScrollTopRef.current = null;
   }, [zoomLevel]);
 
   // ── Touch handler ─────────────────────────────────────────────────────────
@@ -185,13 +180,12 @@ export default function SchedulePage() {
         clearTimer();
         gs.current.isDragging      = false;
         gs.current.longPressFired  = false;
-        gs.current.isPinching      = true;
-        gs.current.pinchDist0      = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        gs.current.pinchZoom0      = zoomRef.current;  // fixed for the whole gesture
-        // Save baseline for first useLayoutEffect step
-        pinchZoomBeforeRef.current = zoomRef.current;
-        pinchScrollTopRef.current  = container.scrollTop;
-        pinchCenterYRef.current    = (t1.clientY + t2.clientY) / 2;
+        gs.current.isPinching       = true;
+        gs.current.pinchDist0       = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        gs.current.pinchZoom0       = zoomRef.current;
+        gs.current.pinchScrollTop0  = container.scrollTop;
+        gs.current.pinchScreenY0    = (t1.clientY + t2.clientY) / 2;
+        gs.current.pinchRectTop     = container.getBoundingClientRect().top;
         return;
       }
 
@@ -254,12 +248,17 @@ export default function SchedulePage() {
         const t1 = e.touches[0], t2 = e.touches[1];
         const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const newZoom = Math.min(3, Math.max(0.5,
-          gs.current.pinchZoom0 * newDist / gs.current.pinchDist0  // ratio from gesture start
+          gs.current.pinchZoom0 * newDist / gs.current.pinchDist0
         ));
-        // Save current state BEFORE setZoomLevel so useLayoutEffect gets correct baseline
-        pinchZoomBeforeRef.current = zoomRef.current;
-        pinchScrollTopRef.current  = container.scrollTop;
-        pinchCenterYRef.current    = (t1.clientY + t2.clientY) / 2;
+        // Slot that was under the pinch center when the gesture started
+        const anchorSlot = (gs.current.pinchScrollTop0 + gs.current.pinchScreenY0
+          - gs.current.pinchRectTop - HEADER_H) / (SLOT_H * gs.current.pinchZoom0);
+        // Current midpoint (allows simultaneous pan while pinching)
+        const midY = (t1.clientY + t2.clientY) / 2;
+        // Desired scrollTop that keeps anchorSlot at the current midpoint
+        desiredScrollTopRef.current = Math.max(0,
+          gs.current.pinchRectTop + HEADER_H + anchorSlot * SLOT_H * newZoom - midY
+        );
         fn.current.setZoomLevel(newZoom);
         return;
       }
