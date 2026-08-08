@@ -14,6 +14,8 @@ const DAYS      = 7;
 const LONG_PRESS_MS = 350;
 const DRAG_DELTA    = 8;
 const HANDLE_H      = 14;
+const DAY_W_MIN     = 64;
+const DAY_W_MAX     = 140;
 
 const COLORS = [
   "bg-violet-600", "bg-emerald-600", "bg-amber-500",  "bg-sky-600",
@@ -280,6 +282,7 @@ export default function SchedulePage() {
   const [editStatus, setEditStatus]       = useState<TaskStatus>("PENDING");
   const [badge, setBadge]                 = useState<string | null>(null);
   const [zoomLevel, setZoomLevel]          = useState(1);
+  const [dayWidth, setDayWidth]           = useState(DAY_W);
   const [isDark, setIsDark]               = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(false);
@@ -446,7 +449,7 @@ export default function SchedulePage() {
     const r    = el.getBoundingClientRect();
     const relX = cx - r.left + el.scrollLeft - TIME_W;
     const relY = cy - r.top  + el.scrollTop  - HEADER_H;
-    const day  = Math.floor(relX / DAY_W);
+    const day  = Math.floor(relX / dayWidth);
     const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
     return { dayIndex: day, slotIndex: slot };
@@ -964,10 +967,10 @@ export default function SchedulePage() {
     const c = scrollRef.current;
     if (!c) return;
     c.scrollTo({
-      left: INF_CENTER * DAY_W,
+      left: INF_CENTER * dayWidth,
       top: currentTimeScrollTop(effSlotHRef.current),
     });
-  }, [infiniteScroll]);
+  }, [infiniteScroll, dayWidth]);
 
   // Week data — kept for week-mode header
   // (colDates / todayIdx are computed above, before the gesture refs)
@@ -983,7 +986,7 @@ export default function SchedulePage() {
     if (!c) return;
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     c.scrollTo({
-      left: INF_CENTER * DAY_W,
+      left: INF_CENTER * dayWidth,
       top: currentTimeScrollTop(effSlotHRef.current),
       behavior: prefersReducedMotion ? "auto" : "smooth",
     });
@@ -1071,7 +1074,7 @@ export default function SchedulePage() {
         className="flex-1 overflow-auto"
         style={{ touchAction: "pan-x pan-y" }}
       >
-        <div style={{ width: TIME_W + colCount * DAY_W }}>
+        <div style={{ width: TIME_W + colCount * dayWidth }}>
 
           {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
@@ -1089,7 +1092,7 @@ export default function SchedulePage() {
               return (
                 <div
                   key={i}
-                  style={{ width: DAY_W }}
+                  style={{ width: dayWidth }}
                   className={`flex flex-col items-center justify-center border-l ${th.border} shrink-0 ${isToday ? th.todayHdr : ""}`}
                 >
                   <span className={`text-[10px] font-medium uppercase ${isToday ? "text-violet-400" : "text-zinc-500"}`}>
@@ -1127,7 +1130,7 @@ export default function SchedulePage() {
             </div>
 
             {/* ── Grid area ────────────────────────────────────────────── */}
-            <div style={{ position: "relative", width: colCount * DAY_W, height: SLOTS * effSlotH }}>
+            <div style={{ position: "relative", width: colCount * dayWidth, height: SLOTS * effSlotH }}>
               {/* Background slot rows */}
               {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
@@ -1140,7 +1143,7 @@ export default function SchedulePage() {
                       key={day}
                       data-day={day}
                       data-slot={slot}
-                      style={{ width: DAY_W }}
+                      style={{ width: dayWidth }}
                       className={`shrink-0 border-l ${th.dayBorder} ${day === todayIdx ? th.todayCol : ""}`}
                     />
                   ))}
@@ -1151,7 +1154,7 @@ export default function SchedulePage() {
               {todayIdx >= 0 && (
                 <div
                   className="absolute pointer-events-none z-20 flex items-center"
-                  style={{ top: nowTop - 1, left: todayIdx * DAY_W, width: DAY_W }}
+                  style={{ top: nowTop - 1, left: todayIdx * dayWidth, width: dayWidth }}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-red-500 -ml-0.5 shrink-0" />
                   <div className="flex-1 h-px bg-red-500" style={{ boxShadow: "0 0 4px rgba(239,68,68,0.7)" }} />
@@ -1178,9 +1181,9 @@ export default function SchedulePage() {
                     data-task-id={task.id}
                     className="absolute overflow-hidden"
                     style={{
-                      left:       colIdx * DAY_W + 2,
+                      left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
-                      width:      DAY_W - 4,
+                      width:      dayWidth - 4,
                       height:     h,
                       borderRadius: 8,
                       zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
@@ -1309,9 +1312,9 @@ export default function SchedulePage() {
         <div
           className={`fixed pointer-events-none rounded-lg ${draggingTask.color} flex flex-col p-1.5 shadow-2xl z-50`}
           style={{
-            left:      dragPos.x - (DAY_W - 4) / 2,
+            left:      dragPos.x - (dayWidth - 4) / 2,
             top:       dragPos.y - draggingTask.span * effSlotH / 2,
-            width:     DAY_W - 4,
+            width:     dayWidth - 4,
             height:    draggingTask.span * effSlotH,
             opacity:   0.9,
             transform: "scale(1.06)",
@@ -1438,6 +1441,23 @@ export default function SchedulePage() {
                 >
                   <span className={`absolute left-0.5 top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200 ${infiniteScroll ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
+              </div>
+
+              {/* Day column width */}
+              <div className={`py-4 border-t ${th.border}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Độ rộng mỗi cột ngày</p>
+                  <span className="text-xs text-zinc-400 tabular-nums">{dayWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={DAY_W_MIN}
+                  max={DAY_W_MAX}
+                  step={2}
+                  value={dayWidth}
+                  onChange={(e) => setDayWidth(Number(e.target.value))}
+                  className="mt-2 w-full accent-violet-500"
+                />
               </div>
             </div>
           </div>
