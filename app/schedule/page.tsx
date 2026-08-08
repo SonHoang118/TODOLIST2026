@@ -672,7 +672,7 @@ export default function SchedulePage() {
     touchedDay:       null as number | null,
     touchedSlot:      null as number | null,
     dismissResizeTap: false,
-    pendingAction:    null as "edit" | "remove" | "accept" | "complete" | null,
+    pendingAction:    null as "edit" | "remove" | "accept" | "complete" | "confirm" | null,
     pendingTaskId:    null as number | null,
     startScrollLeft:  0,
     startScrollTop:   0,
@@ -691,7 +691,7 @@ export default function SchedulePage() {
     fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId ? withTaskAudit({ ...t, ...patch }, sessionUserRef.current) : t)));
   };
 
-  const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete", taskId: number) => {
+  const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete" | "confirm", taskId: number) => {
     if (action === "remove") {
       const task = tasksRef.current.find((t) => t.id === taskId);
       const taskName = task?.title?.trim() || `#${taskId}`;
@@ -719,6 +719,13 @@ export default function SchedulePage() {
       if (scheduleScopeRef.current === "COMPANY") return;
       fn.current.setTasks(prev => prev.map(t => t.id === taskId ? withTaskAudit({ ...t, status: "IN_PROGRESS" }, sessionUserRef.current) : t));
       fn.current.setBadge("Đã nhận task");
+      return;
+    }
+
+    if (action === "confirm") {
+      if (scheduleScopeRef.current !== "COMPANY") return;
+      fn.current.setTasks(prev => prev.map((t) => (t.id === taskId ? withTaskAudit(t, sessionUserRef.current) : t)));
+      fn.current.setBadge("Đã xác nhận task");
       return;
     }
 
@@ -789,7 +796,7 @@ export default function SchedulePage() {
       if (actionEl) {
         // Prevent synthetic click after touch to avoid double-toggle on mobile.
         e.preventDefault();
-        gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete";
+        gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete" | "confirm";
         gs.current.pendingTaskId  = Number(actionEl.dataset.taskId);
         return;
       }
@@ -1624,6 +1631,14 @@ export default function SchedulePage() {
                 const creatorId = task.createdByUserId;
                 const editorName = task.updatedByName;
                 const editorAvatar = task.updatedByAvatar;
+                const actorId = sessionUser?.id ?? null;
+                const hasConfirmedByActor = actorId !== null && task.confirmedByUserIds.includes(actorId);
+                const canConfirmCompanyTask =
+                  isCompanySchedule &&
+                  actorId !== null &&
+                  actorId !== task.createdByUserId &&
+                  actorId !== task.updatedByUserId &&
+                  !hasConfirmedByActor;
                 const confirmerUsers = task.confirmedByUserIds
                   .map((id) => usersForAuth.find((user) => user.id === id))
                   .filter((user): user is SessionUser => Boolean(user));
@@ -1755,6 +1770,18 @@ export default function SchedulePage() {
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {canConfirmCompanyTask && (
+                      <button
+                        type="button"
+                        data-action="confirm"
+                        data-task-id={task.id}
+                        onClick={() => applyTaskAction("confirm", task.id)}
+                        className="absolute bottom-1 right-1 rounded-md border border-emerald-100/70 bg-emerald-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                      >
+                        Xác nhận
+                      </button>
                     )}
 
                     {isPending && (
