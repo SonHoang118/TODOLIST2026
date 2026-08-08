@@ -1552,7 +1552,7 @@ export default function SchedulePage() {
           className={`fixed pointer-events-none rounded-lg ${draggingTaskBgClass} flex flex-col p-1.5 shadow-2xl z-50`}
           style={{
             left:      dragPos.x - (dayWidth - 4) / 2,
-            top:       dragPos.y + 10,
+            top:       dragPos.y - 40,
             width:     dayWidth - 4,
             height:    draggingTask.span * effSlotH,
             opacity:   0.9,
