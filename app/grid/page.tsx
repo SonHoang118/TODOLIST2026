@@ -59,6 +59,8 @@ export default function GridPage() {
   const [dragPos, setDragPos]             = useState({ x: 0, y: 0 });
   const [hoveredCell, setHoveredCell]     = useState<number | null>(null);
   const [resizingId, setResizingId]       = useState<number | null>(null);  // block showing resize handle
+  const [editingId, setEditingId]         = useState<number | null>(null);   // block label being edited
+  const [editLabel, setEditLabel]         = useState("");
   const [badge, setBadge]                 = useState<string | null>(null);
 
   const blockIdRef      = useRef(0);
@@ -71,7 +73,7 @@ export default function GridPage() {
   // Callback refs — always current, safe to call from imperative handlers
   const fn = useRef({
     setBlocks, setDraggingId, setLongPressedId,
-    setDragPos, setHoveredCell, setResizingId, setBadge,
+    setDragPos, setHoveredCell, setResizingId, setEditingId, setEditLabel, setBadge,
     nextId:    (): number => ++blockIdRef.current,
     nextColor: (): string => { const c = PALETTE[colorRef.current % PALETTE.length]; colorRef.current++; return c; },
   });
@@ -81,6 +83,8 @@ export default function GridPage() {
   fn.current.setDragPos       = setDragPos;
   fn.current.setHoveredCell   = setHoveredCell;
   fn.current.setResizingId    = setResizingId;
+  fn.current.setEditingId     = setEditingId;
+  fn.current.setEditLabel     = setEditLabel;
   fn.current.setBadge         = setBadge;
 
   // Pan: stored in ref, applied via direct DOM to avoid re-renders while panning
@@ -127,8 +131,10 @@ export default function GridPage() {
     resizeBlockId:         null as number | null,
     resizeBlockTopScreenY: 0,
     resizeMaxSpan:         ROWS as number,
-    touchedCellIndex: null as number | null,
-    touchedItemId:    null as number | null,
+    touchedCellIndex:  null as number | null,
+    touchedItemId:     null as number | null,
+    pendingAction:     null as "edit" | "remove" | null,
+    pendingActionBlockId: null as number | null,
   });
 
   const clearTimer = () => {
@@ -142,11 +148,20 @@ export default function GridPage() {
     applyPan(INIT_PAD, INIT_PAD);
 
     const onStart = (e: TouchEvent) => {
-      e.preventDefault();
       const t  = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
 
-      // ── A: touch on resize handle of active resize block ─────────────────
+      // ── A: action buttons (edit/remove) — don't preventDefault so tap fires ─
+      const actionEl = el?.closest<HTMLElement>("[data-action]");
+      if (actionEl) {
+        gs.current.pendingAction        = actionEl.dataset.action as "edit" | "remove";
+        gs.current.pendingActionBlockId = Number(actionEl.dataset.blockId);
+        return;
+      }
+
+      e.preventDefault();
+
+      // ── B: touch on resize handle of active resize block ─────────────────
       const handleEl = el?.closest<HTMLElement>("[data-resize-handle]");
       if (handleEl && resizingIdRef.current !== null) {
         const blockId = Number(handleEl.dataset.resizeHandle);
@@ -243,6 +258,24 @@ export default function GridPage() {
       e.preventDefault();
       clearTimer();
       const t = e.changedTouches[0];
+
+      // ── 0: execute action button tap ─────────────────────────────────────
+      if (gs.current.pendingAction !== null) {
+        const action  = gs.current.pendingAction;
+        const blockId = gs.current.pendingActionBlockId!;
+        if (action === "remove") {
+          fn.current.setBlocks(prev => prev.filter(b => b.id !== blockId));
+          fn.current.setResizingId(null);
+          fn.current.setBadge("Removed");
+        } else {
+          const block = blocksRef.current.find(b => b.id === blockId);
+          fn.current.setEditLabel(block?.label ?? "");
+          fn.current.setEditingId(blockId);
+        }
+        gs.current.pendingAction        = null;
+        gs.current.pendingActionBlockId = null;
+        return;
+      }
 
       // ── A: commit resize drag ─────────────────────────────────────────────
       if (gs.current.isResizeDragging && gs.current.resizeBlockId !== null) {
@@ -439,6 +472,26 @@ export default function GridPage() {
                   )}
                 </div>
 
+                {/* Edit / Remove buttons — top-right, only in resize mode */}
+                {isResizing && (
+                  <div className="absolute top-1.5 right-1.5 flex gap-1 z-10">
+                    <button
+                      data-action="edit"
+                      data-block-id={block.id}
+                      className="w-6 h-6 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white text-[10px] active:bg-white/40"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      data-action="remove"
+                      data-block-id={block.id}
+                      className="w-6 h-6 rounded-full bg-red-500/70 backdrop-blur flex items-center justify-center text-white text-[10px] active:bg-red-500"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Resize handle — visible only while in resize mode */}
                 {isResizing && (
                   <div
@@ -446,11 +499,8 @@ export default function GridPage() {
                     className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-black/50 active:bg-black/70"
                     style={{ height: HANDLE_H, borderRadius: "0 0 16px 16px", cursor: "ns-resize" }}
                   >
-                    {/* Grip dots */}
-                    <div className="flex flex-col items-center gap-0.5">
-                      <div className="flex gap-1">
-                        {[0,1,2,3,4].map(i => <div key={i} className="w-1 h-1 rounded-full bg-white/50" />)}
-                      </div>
+                    <div className="flex gap-1">
+                      {[0,1,2,3,4].map(i => <div key={i} className="w-1 h-1 rounded-full bg-white/50" />)}
                     </div>
                   </div>
                 )}
@@ -476,6 +526,55 @@ export default function GridPage() {
           </div>
         )}
       </div>
+
+      {/* Edit label modal */}
+      {editingId !== null && (() => {
+        const block = blocks.find(b => b.id === editingId);
+        if (!block) return null;
+        return (
+          <div
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+            onClick={() => setEditingId(null)}
+          >
+            <div
+              className="bg-zinc-800 rounded-2xl p-5 w-64 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-xs text-zinc-400 mb-2">Đổi tên task</p>
+              <input
+                autoFocus
+                className="w-full bg-zinc-700 text-white rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/40"
+                value={editLabel}
+                onChange={e => setEditLabel(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    setBlocks(prev => prev.map(b => b.id === editingId ? { ...b, label: editLabel.trim() || b.label } : b));
+                    setEditingId(null);
+                  }
+                  if (e.key === "Escape") setEditingId(null);
+                }}
+              />
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setEditingId(null)}
+                  className="flex-1 py-2 rounded-xl bg-zinc-700 text-zinc-300 text-xs"
+                >
+                  Huỷ
+                </button>
+                <button
+                  onClick={() => {
+                    setBlocks(prev => prev.map(b => b.id === editingId ? { ...b, label: editLabel.trim() || b.label } : b));
+                    setEditingId(null);
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-white text-zinc-900 text-xs font-semibold"
+                >
+                  Lưu
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Hint bar */}
       <div className="shrink-0 flex justify-around items-center px-2 py-2 border-t border-zinc-800 bg-zinc-900/60">
