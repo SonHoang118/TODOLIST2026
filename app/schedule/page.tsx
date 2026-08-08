@@ -445,6 +445,32 @@ function slotGradientColor(slot: number, isDark: boolean): string {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
+function slotGradientTextColor(slot: number, isDark: boolean): string {
+  const minute = slot * 30;
+  const anchors = TIME_GRADIENT_ANCHORS;
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+
+  if (!first || !last) return isDark ? "rgb(161, 161, 170)" : "rgb(75, 85, 99)";
+
+  let base = hexToRgb(first.color);
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const start = anchors[i];
+    const end = anchors[i + 1];
+    if (minute >= start.minute && minute <= end.minute) {
+      const range = end.minute - start.minute || 1;
+      const t = (minute - start.minute) / range;
+      base = lerpColor(hexToRgb(start.color), hexToRgb(end.color), t);
+      break;
+    }
+  }
+
+  const mixTarget = isDark ? { r: 255, g: 255, b: 255 } : { r: 15, g: 23, b: 42 };
+  const mixRatio = isDark ? 0.58 : 0.52;
+  const mixed = lerpColor(base, mixTarget, mixRatio);
+  return `rgb(${mixed.r}, ${mixed.g}, ${mixed.b})`;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
@@ -1437,7 +1463,10 @@ export default function SchedulePage() {
                   className={`flex items-start justify-end pr-1.5 border-t ${th.halfBorder}`}
                 >
                   {slot % 2 === 0 && (
-                    <span className={`text-[9px] ${th.timeText} -mt-1 leading-none tabular-nums`}>
+                    <span
+                      className="text-[9px] -mt-1 leading-none tabular-nums"
+                      style={{ color: slotGradientTextColor(slot, isDark) }}
+                    >
                       {slotLabel(slot)}
                     </span>
                   )}
