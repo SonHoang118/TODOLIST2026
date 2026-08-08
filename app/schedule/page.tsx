@@ -1591,6 +1591,7 @@ export default function SchedulePage() {
 
                     {task.assignedFromName && (
                       <div className="flex items-center gap-1.5 text-white/65 text-[9px] truncate">
+                        <span>from:</span>
                         {assignedFromUser?.avatar ? (
                           <img
                             src={assignedFromUser.avatar}
@@ -1602,7 +1603,6 @@ export default function SchedulePage() {
                             {task.assignedFromName.trim().charAt(0).toUpperCase() || "?"}
                           </div>
                         )}
-                        <span className="truncate">from: {task.assignedFromName}</span>
                       </div>
                     )}
 
