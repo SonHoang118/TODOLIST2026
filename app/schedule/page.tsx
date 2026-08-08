@@ -390,20 +390,19 @@ export default function SchedulePage() {
         className="flex-1 overflow-auto"
         style={{ touchAction: "pan-x pan-y" }}
       >
-        {/* Total content size: TIME_W + 7 days wide, HEADER_H + 48 slots tall */}
-        <div style={{ width: TIME_W + DAYS * DAY_W, minHeight: HEADER_H + SLOTS * SLOT_H, position: "relative" }}>
+        <div style={{ width: TIME_W + DAYS * DAY_W }}>
 
-          {/* ── Sticky top-left corner ───────────────────────────────────── */}
+          {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
-            className="bg-zinc-950 z-30"
-            style={{ position: "sticky", top: 0, left: 0, width: TIME_W, height: HEADER_H }}
-          />
-
-          {/* ── Day header row (sticky top) ──────────────────────────────── */}
-          <div
-            className="bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800 z-20 flex"
-            style={{ position: "sticky", top: 0, marginLeft: TIME_W, height: HEADER_H }}
+            className="flex z-20 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800"
+            style={{ position: "sticky", top: 0, height: HEADER_H }}
           >
+            {/* Top-left corner: sticky in both axes */}
+            <div
+              className="bg-zinc-900/95 shrink-0 z-30"
+              style={{ position: "sticky", left: 0, width: TIME_W }}
+            />
+            {/* Day headers */}
             {weekDates.map((date, i) => {
               const isToday = i === todayIdx;
               return (
@@ -423,81 +422,82 @@ export default function SchedulePage() {
             })}
           </div>
 
-          {/* ── Time labels column (sticky left) ─────────────────────────── */}
-          <div
-            className="bg-zinc-950 z-10"
-            style={{ position: "absolute", left: 0, top: HEADER_H, width: TIME_W }}
-          >
-            {Array.from({ length: SLOTS }, (_, slot) => (
-              <div
-                key={slot}
-                style={{ height: SLOT_H }}
-                className="flex items-start justify-end pr-1.5 border-t border-zinc-900"
-              >
-                {slot % 2 === 0 && (
-                  <span className="text-[9px] text-zinc-600 -mt-1 leading-none tabular-nums">
-                    {slotLabel(slot)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          {/* ── Body row: time column sticky left + grid ─────────────────── */}
+          <div className="flex">
 
-          {/* ── Grid area ────────────────────────────────────────────────── */}
-          <div
-            style={{ position: "absolute", left: TIME_W, top: HEADER_H, width: DAYS * DAY_W }}
-          >
-            {/* Background slot rows */}
-            {Array.from({ length: SLOTS }, (_, slot) => (
-              <div
-                key={slot}
-                style={{ height: SLOT_H, display: "flex" }}
-                className={slot % 2 === 0 ? "border-t border-zinc-800" : "border-t border-zinc-900"}
-              >
-                {Array.from({ length: DAYS }, (_, day) => (
-                  <div
-                    key={day}
-                    data-day={day}
-                    data-slot={slot}
-                    style={{ width: DAY_W }}
-                    className={`shrink-0 border-l border-zinc-800/60 ${day === todayIdx ? "bg-violet-950/15" : ""}`}
-                  />
-                ))}
-              </div>
-            ))}
-
-            {/* Current time red line */}
-            {todayIdx >= 0 && (
-              <div
-                className="absolute pointer-events-none z-20 flex items-center"
-                style={{ top: nowTop - 1, left: todayIdx * DAY_W, width: DAY_W }}
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 -ml-0.5 shrink-0" />
-                <div className="flex-1 h-px bg-red-500" style={{ boxShadow: "0 0 4px rgba(239,68,68,0.7)" }} />
-              </div>
-            )}
-
-            {/* Task blocks */}
-            {tasks.map(task => {
-              const isDraggingThis = draggingId    === task.id;
-              const isResizing     = resizingId    === task.id;
-              const isLongPressed  = longPressedId === task.id;
-              const h = task.span * SLOT_H;
-
-              return (
+            {/* Time labels: sticky left so it stays visible on horizontal scroll */}
+            <div
+              className="bg-zinc-950 z-10 shrink-0"
+              style={{ position: "sticky", left: 0, width: TIME_W }}
+            >
+              {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
-                  key={task.id}
-                  ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
-                  data-task-id={task.id}
-                  className="absolute overflow-hidden"
-                  style={{
-                    left:       task.dayIndex * DAY_W + 2,
-                    top:        task.slotIndex * SLOT_H,
-                    width:      DAY_W - 4,
-                    height:     h,
-                    borderRadius: 8,
-                    zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
-                    transition: gs.current.isResizeDragging ? "none" : "height 0.15s ease",
+                  key={slot}
+                  style={{ height: SLOT_H }}
+                  className="flex items-start justify-end pr-1.5 border-t border-zinc-900"
+                >
+                  {slot % 2 === 0 && (
+                    <span className="text-[9px] text-zinc-600 -mt-1 leading-none tabular-nums">
+                      {slotLabel(slot)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Grid area ────────────────────────────────────────────── */}
+            <div style={{ position: "relative", width: DAYS * DAY_W, height: SLOTS * SLOT_H }}>
+              {/* Background slot rows */}
+              {Array.from({ length: SLOTS }, (_, slot) => (
+                <div
+                  key={slot}
+                  style={{ height: SLOT_H, display: "flex" }}
+                  className={slot % 2 === 0 ? "border-t border-zinc-800" : "border-t border-zinc-900"}
+                >
+                  {Array.from({ length: DAYS }, (_, day) => (
+                    <div
+                      key={day}
+                      data-day={day}
+                      data-slot={slot}
+                      style={{ width: DAY_W }}
+                      className={`shrink-0 border-l border-zinc-800/60 ${day === todayIdx ? "bg-violet-950/15" : ""}`}
+                    />
+                  ))}
+                </div>
+              ))}
+
+              {/* Current time red line */}
+              {todayIdx >= 0 && (
+                <div
+                  className="absolute pointer-events-none z-20 flex items-center"
+                  style={{ top: nowTop - 1, left: todayIdx * DAY_W, width: DAY_W }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 -ml-0.5 shrink-0" />
+                  <div className="flex-1 h-px bg-red-500" style={{ boxShadow: "0 0 4px rgba(239,68,68,0.7)" }} />
+                </div>
+              )}
+
+              {/* Task blocks */}
+              {tasks.map(task => {
+                const isDraggingThis = draggingId    === task.id;
+                const isResizing     = resizingId    === task.id;
+                const isLongPressed  = longPressedId === task.id;
+                const h = task.span * SLOT_H;
+
+                return (
+                  <div
+                    key={task.id}
+                    ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
+                    data-task-id={task.id}
+                    className="absolute overflow-hidden"
+                    style={{
+                      left:       task.dayIndex * DAY_W + 2,
+                      top:        task.slotIndex * SLOT_H,
+                      width:      DAY_W - 4,
+                      height:     h,
+                      borderRadius: 8,
+                      zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
+                      transition: gs.current.isResizeDragging ? "none" : "height 0.15s ease",
                     touchAction: "none", // let our handlers capture this, not native scroll
                   }}
                 >
@@ -543,9 +543,10 @@ export default function SchedulePage() {
                 </div>
               );
             })}
-          </div>
-        </div>
-      </div>
+            </div>{/* end grid */}
+          </div>{/* end body row */}
+        </div>{/* end content wrapper */}
+      </div>{/* end scrollRef */}
 
       {/* ── Drag ghost ───────────────────────────────────────────────────── */}
       {draggingTask && (
