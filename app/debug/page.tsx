@@ -37,7 +37,7 @@ export default function DebugPage() {
   // Callback refs — imperative listeners read these at call time, never stale
   const fn = useRef({
     addLog: (_kind: GestureKind, _detail: string) => {},
-    nextTodoId: () => 0,
+    nextTodoId: (): number => 0,
     setPanel: setCurrentPanel,
     setTodos,
     setDraggingId,
