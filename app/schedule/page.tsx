@@ -24,6 +24,21 @@ const COLORS = [
   "bg-pink-600",   "bg-cyan-600",    "bg-lime-600",   "bg-fuchsia-600",
 ];
 
+const TAILWIND_COLOR_TO_HEX: Record<string, string> = {
+  "bg-violet-600": "#7c3aed",
+  "bg-emerald-600": "#059669",
+  "bg-amber-500": "#f59e0b",
+  "bg-sky-600": "#0284c7",
+  "bg-rose-600": "#e11d48",
+  "bg-teal-600": "#0d9488",
+  "bg-orange-500": "#f97316",
+  "bg-indigo-600": "#4f46e5",
+  "bg-pink-600": "#db2777",
+  "bg-cyan-600": "#0891b2",
+  "bg-lime-600": "#65a30d",
+  "bg-fuchsia-600": "#c026d3",
+};
+
 const DEFAULT_TASK_BG = "__DEFAULT_TASK_BG__";
 const PERSONAL_TASK_BG = "__PERSONAL_TASK_BG__";
 const LEGACY_DEFAULT_TASK_BG = "bg-zinc-700";
@@ -344,6 +359,17 @@ function resolveTaskBgClass(taskColor: string, isDark: boolean): string {
   return taskColor;
 }
 
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function colorToPickerHex(taskColor: string): string {
+  if (isHexColor(taskColor)) return taskColor;
+  if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) return "#3f3f46";
+  if (taskColor === PERSONAL_TASK_BG) return "#16a34a";
+  return TAILWIND_COLOR_TO_HEX[taskColor] ?? "#7c3aed";
+}
+
 function doneTaskBgClass(isDark: boolean): string {
   return isDark
     ? "bg-zinc-600/70 border border-zinc-400/60"
@@ -500,8 +526,17 @@ export default function SchedulePage() {
     if (gs.current.timer) { clearTimeout(gs.current.timer); gs.current.timer = null; }
   };
 
+  const patchTask = (taskId: number, patch: Partial<Task>) => {
+    fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
+  };
+
   const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete", taskId: number) => {
     if (action === "remove") {
+      const task = tasksRef.current.find((t) => t.id === taskId);
+      const taskName = task?.title?.trim() || `#${taskId}`;
+      const shouldDelete = window.confirm(`Bạn có chắc muốn xóa task \"${taskName}\" không?`);
+      if (!shouldDelete) return;
+
       fn.current.setTasks(prev => prev.filter(t => t.id !== taskId));
       fn.current.setResizingId(null);
       fn.current.setBadge("Đã xoá");
@@ -514,8 +549,8 @@ export default function SchedulePage() {
       setEditDescription(task?.description ?? "");
       setEditLabel(normalizeTaskLabel(task?.label));
       setEditStatus(task?.status ?? "PENDING");
-      setReviewTaskId(null);
-      fn.current.setEditingId(taskId);
+      fn.current.setEditingId(null);
+      setReviewTaskId(taskId);
       return;
     }
 
@@ -1149,7 +1184,12 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
-  const draggingTaskBgClass = draggingTask ? resolveTaskBgClass(draggingTask.color, isDark) : "";
+  const draggingTaskBgClass = draggingTask && !isHexColor(draggingTask.color)
+    ? resolveTaskBgClass(draggingTask.color, isDark)
+    : "";
+  const draggingTaskBgStyle = draggingTask && isHexColor(draggingTask.color)
+    ? { backgroundColor: draggingTask.color }
+    : undefined;
   const isViewingOwnSchedule = sessionUser !== null && authUserId === sessionUser.id;
 
   const handleResetInfiniteView = () => {
@@ -1342,7 +1382,8 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
-                const taskBgClass = resolveTaskBgClass(task.color, isDark);
+                const taskBgClass = isHexColor(task.color) ? "" : resolveTaskBgClass(task.color, isDark);
+                const taskBgStyle = isHexColor(task.color) ? { backgroundColor: task.color } : undefined;
                 const subtitleLabel = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
                   ? TASK_LABEL_TEXT.PERSONAL
                   : "";
@@ -1374,7 +1415,7 @@ export default function SchedulePage() {
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
                       ${isDone ? doneTaskBgClass(isDark) : ""}
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
-                    style={{ borderRadius: 8 }}
+                    style={{ borderRadius: 8, ...taskBgStyle }}
                   >
                     {isViewingOwnSchedule && (isInProgress || isDone) && (
                       <button
@@ -1494,6 +1535,7 @@ export default function SchedulePage() {
             height:    draggingTask.span * effSlotH,
             opacity:   0.9,
             transform: "scale(1.06)",
+            ...draggingTaskBgStyle,
           }}
         >
           <p className="text-white text-[10px] font-semibold leading-tight truncate">{draggingTask.title}</p>
@@ -1651,7 +1693,6 @@ export default function SchedulePage() {
       {reviewTaskId !== null && (() => {
         const task = tasks.find(t => t.id === reviewTaskId);
         if (!task) return null;
-        const reviewTaskBgClass = resolveTaskBgClass(task.color, isDark);
         const taskDate = absDayToDate(task.absDay);
         const durationMinutes = task.span * 30;
         return (
@@ -1660,70 +1701,87 @@ export default function SchedulePage() {
             onClick={() => setReviewTaskId(null)}
           >
             <div
-              className={`${reviewTaskBgClass} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border border-white/30`}
+              className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border ${th.border}`}
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-base font-semibold text-white">Chi tiết công việc</h3>
-              <div className="mt-3 rounded-xl bg-black/25 px-3 py-2">
-                <p className="text-[11px] text-white/70">Tên công việc</p>
-                <p className="mt-0.5 text-sm font-medium wrap-break-word text-white">{task.title}</p>
+              <h3 className="text-base font-semibold">Chi tiết công việc</h3>
+              <div className={`mt-3 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className={`text-[11px] ${th.subtext}`}>Tên công việc</p>
+                <input
+                  className="mt-1 w-full bg-transparent text-sm font-medium outline-none"
+                  value={task.title}
+                  onChange={(e) => patchTask(task.id, { title: e.target.value })}
+                  placeholder="Nhập tên công việc"
+                />
               </div>
 
-              {task.description.trim() && (
-                <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Mô tả</p>
-                  <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word text-white">{task.description}</p>
-                </div>
-              )}
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className={`text-[11px] ${th.subtext}`}>Mô tả</p>
+                <textarea
+                  className="mt-1 min-h-20 w-full resize-none bg-transparent text-sm outline-none"
+                  value={task.description}
+                  onChange={(e) => patchTask(task.id, { description: e.target.value })}
+                  placeholder="Nhập mô tả"
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <div className="rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Mã task</p>
-                  <p className="mt-0.5 text-sm text-white">#{task.id}</p>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Nhãn</p>
+                  <select
+                    className="mt-1 w-full rounded-md bg-transparent text-sm italic outline-none"
+                    value={normalizeTaskLabel(task.label)}
+                    onChange={(e) => patchTask(task.id, { label: normalizeTaskLabel(e.target.value) })}
+                  >
+                    <option value={DEFAULT_TASK_LABEL}>{TASK_LABEL_TEXT.DEFAULT}</option>
+                    <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
+                  </select>
                 </div>
-                <div className="rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Nhãn</p>
-                  <p className="mt-0.5 text-sm italic wrap-break-word text-white">#{taskLabelText(task.label)}</p>
-                </div>
-                <div className="rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Trạng thái</p>
-                  <p className="mt-0.5 text-sm text-white">{STATUS_LABEL[task.status]}</p>
-                </div>
-                <div className="rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Màu</p>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Màu</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className={`h-3 w-3 rounded-full ${task.color}`} />
-                    <span className="text-xs text-white/80 wrap-break-word">{task.color}</span>
+                    <input
+                      type="color"
+                      className="h-7 w-10 cursor-pointer rounded border border-zinc-500 bg-transparent p-0"
+                      value={colorToPickerHex(task.color)}
+                      onChange={(e) => patchTask(task.id, { color: e.target.value })}
+                      aria-label="Chọn màu"
+                    />
+                    <span className="text-xs">{colorToPickerHex(task.color)}</span>
                   </div>
+                </div>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Trạng thái</p>
+                  <p className="mt-0.5 text-sm">{STATUS_LABEL[task.status]}</p>
                 </div>
               </div>
 
-              <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
-                <p className="text-[11px] text-white/70">Ngày</p>
-                <p className="mt-0.5 text-sm text-white">
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className={`text-[11px] ${th.subtext}`}>Ngày</p>
+                <p className="mt-0.5 text-sm">
                   {dayShortOf(taskDate)}, {taskDate.toLocaleDateString("vi-VN")}
                 </p>
               </div>
 
-              <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
-                <p className="text-[11px] text-white/70">Thời gian</p>
-                <p className="mt-0.5 text-sm tabular-nums text-white">
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className={`text-[11px] ${th.subtext}`}>Thời gian</p>
+                <p className="mt-0.5 text-sm tabular-nums">
                   {slotLabel(task.slotIndex)} - {slotLabel(task.slotIndex + task.span)}
                 </p>
-                <p className="mt-0.5 text-xs text-white/70">{durationMinutes} phút</p>
+                <p className={`mt-0.5 text-xs ${th.subtext}`}>{durationMinutes} phút</p>
               </div>
 
               {task.assignedFromName && (
-                <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
-                  <p className="text-[11px] text-white/70">Được giao từ</p>
-                  <p className="mt-0.5 text-sm wrap-break-word text-white">{task.assignedFromName}</p>
+                <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Được giao từ</p>
+                  <p className="mt-0.5 text-sm wrap-break-word">{task.assignedFromName}</p>
                 </div>
               )}
 
               <div className="flex mt-3">
                 <button
                   onClick={() => setReviewTaskId(null)}
-                  className="w-full py-2.5 rounded-xl bg-white/20 text-white text-xs font-semibold border border-white/30"
+                  className={`w-full py-2.5 rounded-xl ${th.btnSecondary} text-xs font-semibold`}
                 >Đóng</button>
               </div>
             </div>
