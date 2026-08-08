@@ -29,6 +29,19 @@ const LEGACY_DEFAULT_TASK_BG = "bg-zinc-700";
 
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
+const TASK_TITLE_POOL = [
+  "Đi gặp khách hàng",
+  "Đi khảo sát công trình",
+  "Đi lấy vật tư",
+  "Kiểm tra tiến độ đội thi công",
+  "Làm việc với nhà cung cấp",
+  "Nghiệm thu hạng mục",
+  "Họp điều phối công việc",
+  "Chuẩn bị hồ sơ thanh toán",
+  "Kiểm tra an toàn công trường",
+  "Cập nhật báo cáo cuối ngày",
+];
+
 // Infinite-scroll constants
 const EPOCH_DATE = new Date(2026, 0, 1);  // absolute day 0
 const INF_BUFFER = 180;                   // total columns in infinite mode
@@ -176,6 +189,35 @@ function normalizeTaskLabel(value: unknown): TaskLabelValue {
 
 function taskLabelText(value: unknown): string {
   return TASK_LABEL_TEXT[normalizeTaskLabel(value)];
+}
+
+function randomTaskTitle(): string {
+  const i = Math.floor(Math.random() * TASK_TITLE_POOL.length);
+  return TASK_TITLE_POOL[i] ?? "Công việc mới";
+}
+
+function maxTaskId(tasks: Task[]): number {
+  return tasks.reduce((max, task) => Math.max(max, task.id), 0);
+}
+
+function ensureUniqueTaskIds(tasks: Task[]): Task[] {
+  const seen = new Set<number>();
+  let nextId = maxTaskId(tasks);
+  let changed = false;
+
+  const normalized = tasks.map((task) => {
+    if (!seen.has(task.id)) {
+      seen.add(task.id);
+      return task;
+    }
+
+    changed = true;
+    nextId += 1;
+    seen.add(nextId);
+    return { ...task, id: nextId };
+  });
+
+  return changed ? normalized : tasks;
 }
 
 function sanitizeDraftTask(value: unknown): Task | null {
@@ -345,8 +387,10 @@ export default function SchedulePage() {
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
   const effSlotHRef = useRef(SLOT_H);
+  const dayWidthRef = useRef(DAY_W);
   const zoomRef     = useRef(1);
   effSlotHRef.current = effSlotH;
+  dayWidthRef.current = dayWidth;
   zoomRef.current     = zoomLevel;
 
   // Saved state for scroll-position preservation during zoom
@@ -441,6 +485,9 @@ export default function SchedulePage() {
     dismissResizeTap: false,
     pendingAction:    null as "edit" | "remove" | "accept" | "complete" | null,
     pendingTaskId:    null as number | null,
+    startScrollLeft:  0,
+    startScrollTop:   0,
+    didScroll:        false,
   });
 
   const clearTimer = () => {
@@ -488,7 +535,7 @@ export default function SchedulePage() {
     const r    = el.getBoundingClientRect();
     const relX = cx - r.left + el.scrollLeft - TIME_W;
     const relY = cy - r.top  + el.scrollTop  - HEADER_H;
-    const day  = Math.floor(relX / dayWidth);
+    const day  = Math.floor(relX / dayWidthRef.current);
     const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
     return { dayIndex: day, slotIndex: slot };
@@ -573,6 +620,9 @@ export default function SchedulePage() {
       gs.current.t0     = Date.now();
       gs.current.isDragging     = false;
       gs.current.longPressFired = false;
+      gs.current.startScrollLeft = container.scrollLeft;
+      gs.current.startScrollTop = container.scrollTop;
+      gs.current.didScroll = false;
 
       const taskEl = el?.closest<HTMLElement>("[data-task-id]");
       const slot   = screenToSlot(t.clientX, t.clientY);
@@ -592,6 +642,15 @@ export default function SchedulePage() {
 
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0];
+
+      if (!gs.current.isDragging && !gs.current.isResizeDragging && !gs.current.isPinching) {
+        const dxScroll = Math.abs(container.scrollLeft - gs.current.startScrollLeft);
+        const dyScroll = Math.abs(container.scrollTop - gs.current.startScrollTop);
+        if (dxScroll > 2 || dyScroll > 2) {
+          gs.current.didScroll = true;
+          clearTimer();
+        }
+      }
 
       // ── Pinch zoom update ───────────────────────────────────────────────────
       if (gs.current.isPinching && e.touches.length >= 2) {
@@ -661,6 +720,15 @@ export default function SchedulePage() {
 
       if (gs.current.dismissResizeTap) {
         gs.current.dismissResizeTap = false;
+        return;
+      }
+
+      if (gs.current.didScroll && !gs.current.isDragging && !gs.current.isResizeDragging) {
+        gs.current.longPressFired = false;
+        gs.current.draggingTaskId = null;
+        gs.current.touchedTaskId  = null;
+        gs.current.touchedDay     = null;
+        gs.current.touchedSlot    = null;
         return;
       }
 
@@ -748,7 +816,7 @@ export default function SchedulePage() {
 
             fn.current.setTasks(prev => [...prev, {
               id,
-              title: `Task ${id}`,
+              title: randomTaskTitle(),
               description: "",
               absDay: viewStartAbsDayRef.current + day,
               slotIndex: slot,
@@ -769,6 +837,7 @@ export default function SchedulePage() {
       gs.current.touchedTaskId  = null;
       gs.current.touchedDay     = null;
       gs.current.touchedSlot    = null;
+      gs.current.didScroll      = false;
     };
 
     container.addEventListener("touchstart", onStart, { passive: false });
@@ -864,19 +933,20 @@ export default function SchedulePage() {
         throw new Error(data.error ?? "Không thể tải task.");
       }
       const canViewPersonal = sessionUserRef.current?.id === ownerUserId;
-      const remoteTasks = data.tasks
+      const remoteTasks = ensureUniqueTaskIds(data.tasks
         .map(apiTaskToLocalTask)
-        .filter((task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL);
+        .filter((task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL));
       const draft = readTaskDraft(ownerUserId);
-      const draftTasks = (draft?.tasks ?? []).filter(
+      const draftTasks = ensureUniqueTaskIds((draft?.tasks ?? []).filter(
         (task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL,
-      );
+      ));
 
       if (draft && !draft.synced) {
         const draftSignature = taskSignature(draftTasks);
         const remoteSignature = taskSignature(remoteTasks);
         if (draftSignature !== remoteSignature) {
           setTasks(draftTasks);
+          taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
           lastSyncedSignatureRef.current = remoteSignature;
           hasPendingChangesRef.current = true;
           setBadge("Đã khôi phục thay đổi chưa đồng bộ");
@@ -891,6 +961,7 @@ export default function SchedulePage() {
       }
 
       setTasks(remoteTasks);
+  taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
       lastSyncedSignatureRef.current = taskSignature(remoteTasks);
       hasPendingChangesRef.current = false;
       writeTaskDraft(ownerUserId, remoteTasks, true);
@@ -926,6 +997,10 @@ export default function SchedulePage() {
     hasPendingChangesRef.current = !isSynced;
     writeTaskDraft(authUserId, tasks, isSynced);
   }, [tasks, authUserId]);
+
+  useEffect(() => {
+    taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(tasks));
+  }, [tasks]);
 
   useEffect(() => {
     if (!authUserId || !sessionUser || isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
@@ -1125,13 +1200,13 @@ export default function SchedulePage() {
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto"
-        style={{ touchAction: "pan-x pan-y" }}
+        style={{ touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}
       >
         <div style={{ width: TIME_W + colCount * dayWidth }}>
 
           {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
-            className={`flex z-20 ${th.stickyHdr} backdrop-blur-sm border-b ${th.border}`}
+            className={`flex z-20 ${th.stickyHdr} border-b ${th.border}`}
             style={{ position: "sticky", top: 0, height: HEADER_H }}
           >
             {/* Top-left corner: sticky in both axes */}
@@ -1224,7 +1299,6 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
-                const canToggleDone = isViewingOwnSchedule && (isInProgress || isDone);
                 const taskBgClass = resolveTaskBgClass(task.color, isDark);
                 const subtitleText = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
                   ? TASK_LABEL_TEXT.PERSONAL
@@ -1258,13 +1332,13 @@ export default function SchedulePage() {
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
-                    {canToggleDone && (
+                    {isViewingOwnSchedule && (isInProgress || isDone) && (
                       <button
                         type="button"
                         data-action="complete"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("complete", task.id)}
-                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 backdrop-blur-sm ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
@@ -1272,9 +1346,9 @@ export default function SchedulePage() {
                       </button>
                     )}
 
-                    <div className={`flex h-full min-h-0 flex-col ${canToggleDone ? "pl-6" : "pl-0"} ${isResizing ? "pr-12" : "pr-0"}`}>
+                    <div className="flex items-start gap-1 pl-6">
                       <p
-                        className={`text-[11.5px] font-semibold leading-tight text-white ${isDone ? "line-through opacity-80" : ""}`}
+                        className={`text-[11px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1284,34 +1358,37 @@ export default function SchedulePage() {
                       >
                         {task.title}
                       </p>
-
-                      {task.description.trim() && (
-                        <p
-                          className="mt-1 text-[9px] leading-snug text-white/80"
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {task.description}
-                        </p>
-                      )}
-
-                      <div className="mt-auto pt-1 flex flex-wrap items-center gap-1">
-                        {subtitleText && (
-                          <span className="rounded-md border border-white/35 bg-black/20 px-1.5 py-0.5 text-[8.5px] font-medium text-white/90">
-                            {subtitleText}
-                          </span>
-                        )}
-                        {task.assignedFromName && (
-                          <span className="max-w-full truncate rounded-md border border-white/25 bg-black/15 px-1.5 py-0.5 text-[8.5px] text-white/75">
-                            Từ: {task.assignedFromName}
-                          </span>
-                        )}
-                      </div>
                     </div>
+
+                    {task.description.trim() && (
+                      <p
+                        className="text-white/80 text-[9px]"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {task.description}
+                      </p>
+                    )}
+                    {subtitleText && (
+                      <p
+                        className="text-white/75 text-[9px]"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {subtitleText}
+                      </p>
+                    )}
+                    {task.assignedFromName && (
+                      <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
+                    )}
 
                     {isPending && (
                       isViewingOwnSchedule ? (
@@ -1320,7 +1397,7 @@ export default function SchedulePage() {
                           data-action="accept"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("accept", task.id)}
-                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/90 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
                         >
                           Nhận
                         </button>
@@ -1536,7 +1613,7 @@ export default function SchedulePage() {
         return (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
-            onClick={() => setEditingId(null)}
+            onClick={() => setReviewTaskId(null)}
           >
             <div
               className={`${reviewTaskBgClass} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border border-white/30`}
