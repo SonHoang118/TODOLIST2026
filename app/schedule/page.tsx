@@ -384,6 +384,7 @@ export default function SchedulePage() {
   const [draggingId, setDraggingId]       = useState<number | null>(null);
   const [longPressedId, setLongPressedId] = useState<number | null>(null);
   const [dragPos, setDragPos]             = useState({ x: 0, y: 0 });
+  const [dragTiltDeg, setDragTiltDeg]     = useState(0);
   const [dragPreview, setDragPreview]     = useState<{ dayIndex: number; slotIndex: number } | null>(null);
   const [resizingId, setResizingId]       = useState<number | null>(null);
   const [reviewTaskId, setReviewTaskId]   = useState<number | null>(null);
@@ -522,6 +523,9 @@ export default function SchedulePage() {
     startScrollLeft:  0,
     startScrollTop:   0,
     didScroll:        false,
+    lastMoveX:        0,
+    lastMoveTime:     0,
+    lastVx:           0,
   });
 
   const clearTimer = () => {
@@ -772,11 +776,25 @@ export default function SchedulePage() {
         gs.current.isDragging = true;
         fn.current.setDraggingId(gs.current.draggingTaskId!);
         fn.current.setDragPreview(screenToSlot(t.clientX, t.clientY));
+        gs.current.lastMoveX = t.clientX;
+        gs.current.lastMoveTime = performance.now();
+        gs.current.lastVx = 0;
+        setDragTiltDeg(0);
         fn.current.setLongPressedId(null);
       }
 
       if (gs.current.isDragging) {
         e.preventDefault(); // stop native scroll during task drag
+        const now = performance.now();
+        const dt = Math.max(1, now - gs.current.lastMoveTime);
+        const vx = (t.clientX - gs.current.lastMoveX) / dt;
+        const ax = (vx - gs.current.lastVx) / dt;
+        // Convert horizontal acceleration to visual tilt and clamp to +/-20deg.
+        const tilt = Math.max(-20, Math.min(20, ax * 2200));
+        setDragTiltDeg(tilt);
+        gs.current.lastMoveX = t.clientX;
+        gs.current.lastMoveTime = now;
+        gs.current.lastVx = vx;
         fn.current.setDragPreview(screenToSlot(t.clientX, t.clientY));
         fn.current.setDragPos({ x: t.clientX, y: t.clientY });
         return;
@@ -853,6 +871,7 @@ export default function SchedulePage() {
         }
         fn.current.setDragPreview(null);
         fn.current.setDraggingId(null);
+        setDragTiltDeg(0);
         gs.current.isDragging     = false;
         gs.current.draggingTaskId = null;
 
@@ -922,6 +941,7 @@ export default function SchedulePage() {
       gs.current.touchedSlot    = null;
       gs.current.didScroll      = false;
       fn.current.setDragPreview(null);
+      setDragTiltDeg(0);
     };
 
     container.addEventListener("touchstart", onStart, { passive: false });
@@ -1556,7 +1576,7 @@ export default function SchedulePage() {
             width:     dayWidth - 4,
             height:    draggingTask.span * effSlotH,
             opacity:   0.9,
-            transform: "scale(1.06)",
+            transform: `scale(1.06) rotate(${dragTiltDeg}deg)`,
             transformOrigin: "top center",
             ...draggingTaskBgStyle,
           }}
