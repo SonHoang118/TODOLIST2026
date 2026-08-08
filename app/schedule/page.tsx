@@ -381,12 +381,14 @@ export default function SchedulePage() {
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
   const authUserIdRef                      = useRef<number | null>(null);
+  const isViewingOwnScheduleRef            = useRef(false);
   const lastSyncedSignatureRef             = useRef("");
   const hasPendingChangesRef               = useRef(false);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
   authUserIdRef.current = authUserId;
+  isViewingOwnScheduleRef.current = sessionUser !== null && authUserId === sessionUser.id;
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -590,6 +592,31 @@ export default function SchedulePage() {
         gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete";
         gs.current.pendingTaskId  = Number(actionEl.dataset.taskId);
         return;
+      }
+
+      // Make complete checkbox easier to tap by using hit-slop on the top-left area.
+      const taskElForHitSlop = el?.closest<HTMLElement>("[data-task-id]");
+      if (taskElForHitSlop) {
+        const taskId = Number(taskElForHitSlop.dataset.taskId);
+        const task = tasksRef.current.find((item) => item.id === taskId);
+        const canToggleDone =
+          isViewingOwnScheduleRef.current &&
+          (task?.status === "IN_PROGRESS" || task?.status === "DONE");
+
+        if (canToggleDone) {
+          const rect = taskElForHitSlop.getBoundingClientRect();
+          const hitSlop = 10;
+          const hitSize = 28;
+          const withinX = t.clientX >= rect.left - hitSlop && t.clientX <= rect.left + hitSize + hitSlop;
+          const withinY = t.clientY >= rect.top - hitSlop && t.clientY <= rect.top + hitSize + hitSlop;
+
+          if (withinX && withinY) {
+            e.preventDefault();
+            gs.current.pendingAction = "complete";
+            gs.current.pendingTaskId = taskId;
+            return;
+          }
+        }
       }
 
       // ── Resize handle touch ───────────────────────────────────────────────
@@ -1343,11 +1370,11 @@ export default function SchedulePage() {
                         data-action="complete"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("complete", task.id)}
-                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        className={`absolute top-1 left-1 h-6 w-6 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
-                        {isDone && <span className="text-[11px] leading-none text-emerald-200">✓</span>}
+                        {isDone && <span className="text-xs leading-none text-emerald-200">✓</span>}
                       </button>
                     )}
 
