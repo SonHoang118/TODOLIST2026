@@ -267,74 +267,76 @@ export default function Home() {
             </div>
 
             {settingsOpen && currentUser.role === "ADMIN" && (
-              <form
-                onSubmit={handleCreateUser}
-                className="grid gap-3 rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5"
-              >
-                <h3 className="text-base font-semibold">Tạo user mới</h3>
-
-                <div className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-950/60 px-3 py-2">
-                  <Avatar user={currentUser} />
-                  <div>
-                    <p className="text-xs text-zinc-400">Đang dùng tài khoản để tạo user</p>
-                    <p className="text-sm font-semibold text-zinc-100">{currentUser.name}</p>
-                    <p className="text-xs text-zinc-400">{currentUser.role} · ID {currentUser.id}</p>
+              <section className="grid gap-4 rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 lg:grid-cols-[260px_1fr]">
+                <aside className="rounded-2xl border border-zinc-700 bg-zinc-950/60 p-4">
+                  <p className="text-xs uppercase tracking-wide text-zinc-500">Setting Sidebar</p>
+                  <div className="mt-3 flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-900/70 px-3 py-3">
+                    <Avatar user={currentUser} />
+                    <div>
+                      <p className="text-xs text-zinc-400">Tài khoản đang dùng</p>
+                      <p className="text-sm font-semibold text-zinc-100">{currentUser.name}</p>
+                      <p className="text-xs text-zinc-400">{currentUser.role} · ID {currentUser.id}</p>
+                    </div>
                   </div>
-                </div>
+                </aside>
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-zinc-300">Role</span>
-                  <select
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as UserRole)}
-                    className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
+                <form onSubmit={handleCreateUser} className="grid gap-3">
+                  <h3 className="text-base font-semibold">Tạo user mới</h3>
+
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-zinc-300">Role</span>
+                    <select
+                      value={newRole}
+                      onChange={(e) => setNewRole(e.target.value as UserRole)}
+                      className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
+                    >
+                      <option value="STAFF">STAFF</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </label>
+
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-zinc-300">Tên</span>
+                    <input
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
+                      required
+                    />
+                  </label>
+
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-zinc-300">Avatar (upload Cloudinary)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setNewAvatarFile(e.target.files?.[0] ?? null)}
+                      className="block w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                      required
+                    />
+                  </label>
+
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-zinc-300">Mật khẩu</span>
+                    <input
+                      type="password"
+                      minLength={6}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
+                      required
+                    />
+                  </label>
+
+                  <button
+                    disabled={busy}
+                    className="h-11 rounded-xl bg-emerald-600 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    type="submit"
                   >
-                    <option value="STAFF">STAFF</option>
-                    <option value="ADMIN">ADMIN</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1 text-sm">
-                  <span className="text-zinc-300">Tên</span>
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
-                    required
-                  />
-                </label>
-
-                <label className="grid gap-1 text-sm">
-                  <span className="text-zinc-300">Avatar (upload Cloudinary)</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setNewAvatarFile(e.target.files?.[0] ?? null)}
-                    className="block w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                    required
-                  />
-                </label>
-
-                <label className="grid gap-1 text-sm">
-                  <span className="text-zinc-300">Mật khẩu</span>
-                  <input
-                    type="password"
-                    minLength={6}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3"
-                    required
-                  />
-                </label>
-
-                <button
-                  disabled={busy}
-                  className="h-11 rounded-xl bg-emerald-600 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  type="submit"
-                >
-                  {busy ? "Đang tạo..." : "Tạo user"}
-                </button>
-              </form>
+                    {busy ? "Đang tạo..." : "Tạo user"}
+                  </button>
+                </form>
+              </section>
             )}
           </section>
         )}
