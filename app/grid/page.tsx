@@ -87,29 +87,38 @@ export default function GridPage() {
   fn.current.setEditLabel     = setEditLabel;
   fn.current.setBadge         = setBadge;
 
-  // Pan: stored in ref, applied via direct DOM to avoid re-renders while panning
+  // Pan + zoom: stored in refs, applied via direct DOM to avoid re-renders
   const panRef       = useRef({ x: INIT_PAD, y: INIT_PAD });
+  const zoomRef      = useRef(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const gridRef      = useRef<HTMLDivElement>(null);
   // Per-block DOM refs for direct height manipulation during resize
   const blockEls     = useRef<Map<number, HTMLDivElement>>(new Map());
-  const resizeSpanRef = useRef(1); // live span tracked during resize drag
+  const resizeSpanRef = useRef(1);
 
-  const applyPan = (x: number, y: number) => {
+  const applyTransform = (x: number, y: number, zoom: number) => {
     const c = containerRef.current;
     if (!c) return;
-    const cx = Math.min(INIT_PAD, Math.max(c.clientWidth  - GRID_W - INIT_PAD, x));
-    const cy = Math.min(INIT_PAD, Math.max(c.clientHeight - GRID_H - INIT_PAD, y));
-    panRef.current = { x: cx, y: cy };
-    if (gridRef.current) gridRef.current.style.transform = `translate(${cx}px, ${cy}px)`;
+    const z  = Math.min(3, Math.max(0.25, zoom));
+    const cx = Math.min(INIT_PAD, Math.max(c.clientWidth  - GRID_W * z - INIT_PAD, x));
+    const cy = Math.min(INIT_PAD, Math.max(c.clientHeight - GRID_H * z - INIT_PAD, y));
+    panRef.current  = { x: cx, y: cy };
+    zoomRef.current = z;
+    if (gridRef.current) {
+      gridRef.current.style.transformOrigin = "0 0";
+      gridRef.current.style.transform = `translate(${cx}px, ${cy}px) scale(${z})`;
+    }
   };
+
+  const applyPan = (x: number, y: number) => applyTransform(x, y, zoomRef.current);
 
   const screenToCell = (sx: number, sy: number): number | null => {
     const c = containerRef.current;
     if (!c) return null;
     const r  = c.getBoundingClientRect();
-    const gx = sx - r.left - panRef.current.x;
-    const gy = sy - r.top  - panRef.current.y;
+    const z  = zoomRef.current;
+    const gx = (sx - r.left - panRef.current.x) / z;
+    const gy = (sy - r.top  - panRef.current.y) / z;
     const col = Math.floor(gx / STRIDE);
     const row = Math.floor(gy / STRIDE);
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
@@ -126,6 +135,10 @@ export default function GridPage() {
     isDragging: false,
     longPressFired: false,
     isResizeDragging: false,
+    isPinching: false,
+    pinchDist0: 0,     // initial finger distance when pinch started
+    pinchZoom0: 1,     // zoom level when pinch started
+    pinchCx: 0, pinchCy: 0, // pinch midpoint in container coords
     timer: null as ReturnType<typeof setTimeout> | null,
     draggingItemId:        null as number | null,
     resizeBlockId:         null as number | null,
@@ -161,6 +174,21 @@ export default function GridPage() {
 
       e.preventDefault();
 
+      // ── Pinch to zoom (2 fingers) ────────────────────────────────────────
+      if (e.touches.length === 2) {
+        const t1 = e.touches[0], t2 = e.touches[1];
+        const rect = container.getBoundingClientRect();
+        clearTimer();
+        gs.current.isDragging    = false;
+        gs.current.isPanning     = false;
+        gs.current.isPinching    = true;
+        gs.current.pinchDist0    = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        gs.current.pinchZoom0    = zoomRef.current;
+        gs.current.pinchCx       = (t1.clientX + t2.clientX) / 2 - rect.left;
+        gs.current.pinchCy       = (t1.clientY + t2.clientY) / 2 - rect.top;
+        return;
+      }
+
       // ── B: touch on resize handle of active resize block ─────────────────
       const handleEl = el?.closest<HTMLElement>("[data-resize-handle]");
       if (handleEl && resizingIdRef.current !== null) {
@@ -170,7 +198,7 @@ export default function GridPage() {
           const rect  = container.getBoundingClientRect();
           gs.current.isResizeDragging       = true;
           gs.current.resizeBlockId          = blockId;
-          gs.current.resizeBlockTopScreenY  = rect.top + panRef.current.y + cellTopPx(block.cellIndex);
+          gs.current.resizeBlockTopScreenY  = rect.top + panRef.current.y + cellTopPx(block.cellIndex) * zoomRef.current;
           gs.current.resizeMaxSpan          = ROWS - Math.floor(block.cellIndex / COLS);
           resizeSpanRef.current             = block.span;
           return;
@@ -207,9 +235,22 @@ export default function GridPage() {
       e.preventDefault();
       const t = e.touches[0];
 
+      // ── Pinch in progress ─────────────────────────────────────────────────
+      if (gs.current.isPinching && e.touches.length >= 2) {
+        const t1 = e.touches[0], t2 = e.touches[1];
+        const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const newZoom = gs.current.pinchZoom0 * newDist / gs.current.pinchDist0;
+        // Keep the pinch midpoint fixed in grid space
+        const ratio   = newZoom / zoomRef.current;
+        const newPanX = gs.current.pinchCx - (gs.current.pinchCx - panRef.current.x) * ratio;
+        const newPanY = gs.current.pinchCy - (gs.current.pinchCy - panRef.current.y) * ratio;
+        applyTransform(newPanX, newPanY, newZoom);
+        return;
+      }
+
       // ── Resize drag: update block height live via direct DOM ──────────────
       if (gs.current.isResizeDragging && gs.current.resizeBlockId !== null) {
-        const rawH    = Math.max(spanToPx(0.25), t.clientY - gs.current.resizeBlockTopScreenY);
+        const rawH    = Math.max(spanToPx(0.25), (t.clientY - gs.current.resizeBlockTopScreenY) / zoomRef.current);
         const snapped = snapSpan(rawH, gs.current.resizeMaxSpan);
         if (resizeSpanRef.current !== snapped) {
           resizeSpanRef.current = snapped;
@@ -258,6 +299,12 @@ export default function GridPage() {
       e.preventDefault();
       clearTimer();
       const t = e.changedTouches[0];
+
+      // End pinch when a finger lifts
+      if (gs.current.isPinching) {
+        if (e.touches.length < 2) gs.current.isPinching = false;
+        return;
+      }
 
       // ── 0: execute action button tap ─────────────────────────────────────
       if (gs.current.pendingAction !== null) {
@@ -390,6 +437,14 @@ export default function GridPage() {
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-zinc-700 text-white truncate">{badge}</span>
           )}
         </div>
+        <button
+          onClick={() => applyTransform(panRef.current.x, panRef.current.y, zoomRef.current * 1.4)}
+          className="text-xs text-zinc-400 w-7 h-7 rounded-lg bg-zinc-800 shrink-0 flex items-center justify-center"
+        >+</button>
+        <button
+          onClick={() => applyTransform(panRef.current.x, panRef.current.y, zoomRef.current / 1.4)}
+          className="text-xs text-zinc-400 w-7 h-7 rounded-lg bg-zinc-800 shrink-0 flex items-center justify-center"
+        >−</button>
         <button
           onClick={() => { setBlocks([]); setResizingId(null); }}
           className="text-xs text-zinc-500 px-2 py-1 rounded-lg bg-zinc-800 shrink-0"
