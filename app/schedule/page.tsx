@@ -270,6 +270,7 @@ export default function SchedulePage() {
   const [longPressedId, setLongPressedId] = useState<number | null>(null);
   const [dragPos, setDragPos]             = useState({ x: 0, y: 0 });
   const [resizingId, setResizingId]       = useState<number | null>(null);
+  const [reviewTaskId, setReviewTaskId]   = useState<number | null>(null);
   const [editingId, setEditingId]         = useState<number | null>(null);
   const [editTitle, setEditTitle]         = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -393,6 +394,7 @@ export default function SchedulePage() {
     touchedTaskId:    null as number | null,
     touchedDay:       null as number | null,
     touchedSlot:      null as number | null,
+    dismissResizeTap: false,
     pendingAction:    null as "edit" | "remove" | "accept" | "complete" | null,
     pendingTaskId:    null as number | null,
   });
@@ -415,6 +417,7 @@ export default function SchedulePage() {
       setEditDescription(task?.description ?? "");
       setEditLabel(task?.label ?? "");
       setEditStatus(task?.status ?? "PENDING");
+      setReviewTaskId(null);
       fn.current.setEditingId(taskId);
       return;
     }
@@ -511,8 +514,15 @@ export default function SchedulePage() {
         }
       }
 
-      // Dismiss resize mode when touching elsewhere
-      if (resizingIdRef.current !== null) fn.current.setResizingId(null);
+      // If resize mode is active, the first tap outside should only dismiss it.
+      if (resizingIdRef.current !== null) {
+        fn.current.setResizingId(null);
+        gs.current.dismissResizeTap = true;
+        gs.current.touchedTaskId = null;
+        gs.current.touchedDay = null;
+        gs.current.touchedSlot = null;
+        return;
+      }
 
       gs.current.startX = t.clientX;
       gs.current.startY = t.clientY;
@@ -604,6 +614,12 @@ export default function SchedulePage() {
         if (e.touches.length < 2) gs.current.isPinching = false;
         return;
       }
+
+      if (gs.current.dismissResizeTap) {
+        gs.current.dismissResizeTap = false;
+        return;
+      }
+
       clearTimer();
       const t = e.changedTouches[0];
 
@@ -660,7 +676,8 @@ export default function SchedulePage() {
         const adx = Math.abs(t.clientX - gs.current.startX);
         const ady = Math.abs(t.clientY - gs.current.startY);
         if (adx < 10 && ady < 10 && Date.now() - gs.current.t0 < LONG_PRESS_MS) {
-          applyTaskAction("edit", gs.current.touchedTaskId);
+          setEditingId(null);
+          setReviewTaskId(gs.current.touchedTaskId);
         }
 
       // ── Quick tap → create task ───────────────────────────────────────────
@@ -1393,9 +1410,9 @@ export default function SchedulePage() {
           </div>
       </div>
 
-      {/* ── Edit modal ───────────────────────────────────────────────────── */}
-      {editingId !== null && (() => {
-        const task = tasks.find(t => t.id === editingId);
+      {/* ── Review card (touch) ──────────────────────────────────────────── */}
+      {reviewTaskId !== null && (() => {
+        const task = tasks.find(t => t.id === reviewTaskId);
         if (!task) return null;
         const taskDate = absDayToDate(task.absDay);
         const durationMinutes = task.span * 30;
@@ -1405,69 +1422,156 @@ export default function SchedulePage() {
             onClick={() => setEditingId(null)}
           >
             <div
-              className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs`}
+              className={`${task.color} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border border-white/30`}
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-base font-semibold">Chi tiết công việc</h3>
-              <div className={`mt-3 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className="text-[11px] text-zinc-400">Tên công việc</p>
-                <p className="mt-0.5 text-sm font-medium wrap-break-word">{task.title}</p>
+              <h3 className="text-base font-semibold text-white">Chi tiết công việc</h3>
+              <div className="mt-3 rounded-xl bg-black/25 px-3 py-2">
+                <p className="text-[11px] text-white/70">Tên công việc</p>
+                <p className="mt-0.5 text-sm font-medium wrap-break-word text-white">{task.title}</p>
               </div>
 
-              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className="text-[11px] text-zinc-400">Mô tả</p>
-                <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word">
-                  {task.description.trim() ? task.description : "Chưa có mô tả"}
-                </p>
-              </div>
+              {task.description.trim() && (
+                <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Mô tả</p>
+                  <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word text-white">{task.description}</p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className="text-[11px] text-zinc-400">Mã task</p>
-                  <p className="mt-0.5 text-sm">#{task.id}</p>
+                <div className="rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Mã task</p>
+                  <p className="mt-0.5 text-sm text-white">#{task.id}</p>
                 </div>
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className="text-[11px] text-zinc-400">Nhãn</p>
-                  <p className="mt-0.5 text-sm wrap-break-word">{task.label.trim() ? `#${task.label}` : "Không có"}</p>
+                <div className="rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Nhãn</p>
+                  <p className="mt-0.5 text-sm wrap-break-word text-white">{task.label.trim() ? `#${task.label}` : "Không có"}</p>
                 </div>
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className="text-[11px] text-zinc-400">Trạng thái</p>
-                  <p className="mt-0.5 text-sm">{STATUS_LABEL[task.status]}</p>
+                <div className="rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Trạng thái</p>
+                  <p className="mt-0.5 text-sm text-white">{STATUS_LABEL[task.status]}</p>
                 </div>
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className="text-[11px] text-zinc-400">Màu</p>
+                <div className="rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Màu</p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className={`h-3 w-3 rounded-full ${task.color}`} />
-                    <span className="text-xs text-zinc-400 wrap-break-word">{task.color}</span>
+                    <span className="text-xs text-white/80 wrap-break-word">{task.color}</span>
                   </div>
                 </div>
               </div>
 
-              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className="text-[11px] text-zinc-400">Ngày</p>
-                <p className="mt-0.5 text-sm">
+              <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
+                <p className="text-[11px] text-white/70">Ngày</p>
+                <p className="mt-0.5 text-sm text-white">
                   {dayShortOf(taskDate)}, {taskDate.toLocaleDateString("vi-VN")}
                 </p>
               </div>
 
-              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className="text-[11px] text-zinc-400">Thời gian</p>
-                <p className="mt-0.5 text-sm tabular-nums">
+              <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
+                <p className="text-[11px] text-white/70">Thời gian</p>
+                <p className="mt-0.5 text-sm tabular-nums text-white">
                   {slotLabel(task.slotIndex)} - {slotLabel(task.slotIndex + task.span)}
                 </p>
-                <p className="mt-0.5 text-xs text-zinc-400">{durationMinutes} phút</p>
+                <p className="mt-0.5 text-xs text-white/70">{durationMinutes} phút</p>
               </div>
 
-              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className="text-[11px] text-zinc-400">Được giao từ</p>
-                <p className="mt-0.5 text-sm wrap-break-word">{task.assignedFromName ?? "Tự tạo"}</p>
-              </div>
+              {task.assignedFromName && (
+                <div className="mt-2 rounded-xl bg-black/25 px-3 py-2">
+                  <p className="text-[11px] text-white/70">Được giao từ</p>
+                  <p className="mt-0.5 text-sm wrap-break-word text-white">{task.assignedFromName}</p>
+                </div>
+              )}
 
               <div className="flex mt-3">
                 <button
-                  onClick={() => setEditingId(null)}
-                  className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"
+                  onClick={() => setReviewTaskId(null)}
+                  className="w-full py-2.5 rounded-xl bg-white/20 text-white text-xs font-semibold border border-white/30"
                 >Đóng</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Edit modal (form) ────────────────────────────────────────────── */}
+      {editingId !== null && (() => {
+        const task = tasks.find(t => t.id === editingId);
+        if (!task) return null;
+        return (
+          <div
+            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+            onClick={() => setEditingId(null)}
+          >
+            <div
+              className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs`}
+              onClick={e => e.stopPropagation()}
+            >
+              <p className="text-xs text-zinc-400 mb-2">Tên công việc</p>
+              <input
+                autoFocus
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    setTasks(prev => prev.map(t => t.id === editingId ? {
+                      ...t,
+                      title: editTitle.trim() || t.title,
+                      description: editDescription,
+                      label: editLabel,
+                      status: editStatus,
+                    } : t));
+                    setEditingId(null);
+                  }
+                  if (e.key === "Escape") setEditingId(null);
+                }}
+              />
+              <p className="text-xs text-zinc-400 mt-2 mb-1">Mô tả</p>
+              <textarea
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60 min-h-20`}
+                value={editDescription}
+                onChange={e => setEditDescription(e.target.value)}
+              />
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
+                  <input
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    value={editLabel}
+                    onChange={e => setEditLabel(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
+                  <select
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value as TaskStatus)}
+                  >
+                    <option value="PENDING">{STATUS_LABEL.PENDING}</option>
+                    <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
+                    <option value="DONE">{STATUS_LABEL.DONE}</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setEditingId(null)}
+                  className={`flex-1 py-2.5 rounded-xl ${th.btnSecondary} text-xs`}
+                >Huỷ</button>
+                <button
+                  onClick={() => {
+                    setTasks(prev => prev.map(t => t.id === editingId ? {
+                      ...t,
+                      title: editTitle.trim() || t.title,
+                      description: editDescription,
+                      label: editLabel,
+                      status: editStatus,
+                    } : t));
+                    setEditingId(null);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"
+                >Lưu</button>
               </div>
             </div>
           </div>
