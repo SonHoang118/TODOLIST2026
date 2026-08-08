@@ -81,6 +81,15 @@ interface Task {
   color: string;
 }
 
+interface SessionUser {
+  id: number;
+  name: string;
+  role: "ADMIN" | "STAFF";
+  avatar: string;
+}
+
+const AUTH_STORAGE_KEY = "todo2026.currentUser";
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
@@ -97,6 +106,7 @@ export default function SchedulePage() {
   const [isDark, setIsDark]               = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(false);
+  const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -468,6 +478,28 @@ export default function SchedulePage() {
     return () => clearTimeout(t);
   }, [badge]);
 
+  useEffect(() => {
+    const loadSessionUser = async () => {
+      try {
+        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as { id?: number };
+        if (typeof parsed.id !== "number") return;
+
+        const res = await fetch("/api/users", { cache: "no-store" });
+        const data = (await res.json()) as { users?: SessionUser[] };
+        if (!res.ok || !Array.isArray(data.users)) return;
+
+        const found = data.users.find((u) => u.id === parsed.id) ?? null;
+        setSessionUser(found);
+      } catch {
+        setSessionUser(null);
+      }
+    };
+
+    void loadSessionUser();
+  }, []);
+
   // Scroll to today when switching to infinite mode
   useEffect(() => {
     if (!infiniteScroll) return;
@@ -771,6 +803,27 @@ export default function SchedulePage() {
               <button onClick={() => setSettingsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`}>✕</button>
             </div>
             <div className="flex-1 px-4 py-5 overflow-y-auto">
+              <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3`}>
+                <p className={`text-[11px] uppercase tracking-wide ${th.subtext}`}>Tài khoản đang dùng</p>
+                {sessionUser ? (
+                  <div className="mt-2 flex items-center gap-2.5">
+                    {sessionUser.avatar ? (
+                      <img src={sessionUser.avatar} alt={sessionUser.name} className="h-10 w-10 rounded-lg object-cover" />
+                    ) : (
+                      <div className="h-10 w-10 rounded-lg bg-zinc-700 flex items-center justify-center text-sm font-semibold">
+                        {sessionUser.name.trim().charAt(0).toUpperCase() || "U"}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{sessionUser.name}</p>
+                      <p className={`text-xs ${th.subtext}`}>{sessionUser.role} · ID {sessionUser.id}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={`mt-2 text-xs ${th.subtext}`}>Chưa có phiên đăng nhập.</p>
+                )}
+              </div>
+
               {/* Dark / Light toggle */}
               <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
                 <div>
