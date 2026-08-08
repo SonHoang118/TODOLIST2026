@@ -1512,7 +1512,7 @@ export default function SchedulePage() {
                     key={task.id}
                     ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
                     data-task-id={task.id}
-                    className="absolute overflow-visible"
+                    className="absolute overflow-hidden"
                     style={{
                       left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
@@ -1589,6 +1589,23 @@ export default function SchedulePage() {
                       </p>
                     )}
 
+                    {task.assignedFromName && (
+                      <div className="flex items-center gap-1.5 text-white/65 text-[9px] truncate">
+                        {assignedFromUser?.avatar ? (
+                          <img
+                            src={assignedFromUser.avatar}
+                            alt={task.assignedFromName}
+                            className="h-4 w-4 rounded-full object-cover border border-white/40"
+                          />
+                        ) : (
+                          <div className="h-4 w-4 rounded-full bg-zinc-700 text-white text-[8px] font-semibold flex items-center justify-center border border-white/40 shrink-0">
+                            {task.assignedFromName.trim().charAt(0).toUpperCase() || "?"}
+                          </div>
+                        )}
+                        <span className="truncate">from: {task.assignedFromName}</span>
+                      </div>
+                    )}
+
                     {isPending && (
                       isViewingOwnSchedule ? (
                         <button
@@ -1619,25 +1636,6 @@ export default function SchedulePage() {
                       </div>
                     )}
                   </div>
-
-                  {task.assignedFromName && (
-                    <div
-                      className="absolute -top-2 -right-2 z-20"
-                      title={`Được giao từ: ${task.assignedFromName}`}
-                    >
-                      {assignedFromUser?.avatar ? (
-                        <img
-                          src={assignedFromUser.avatar}
-                          alt={task.assignedFromName}
-                          className="h-5 w-5 rounded-full object-cover border border-zinc-200/70 shadow"
-                        />
-                      ) : (
-                        <div className="h-5 w-5 rounded-full bg-zinc-700 text-white text-[9px] font-semibold flex items-center justify-center border border-zinc-200/70 shadow">
-                          {task.assignedFromName.trim().charAt(0).toUpperCase() || "?"}
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Resize handle (bottom bar) */}
                   {isResizing && (
