@@ -23,6 +23,24 @@ const COLORS = [
 
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
+// Infinite-scroll constants
+const EPOCH_DATE = new Date(2026, 0, 1);  // absolute day 0
+const INF_BUFFER = 180;                   // total columns in infinite mode
+const INF_CENTER = 90;                    // today is at this column index
+
+function dateToAbsDay(d: Date): number {
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((local.getTime() - EPOCH_DATE.getTime()) / 86400000);
+}
+function absDayToDate(n: number): Date {
+  const d = new Date(EPOCH_DATE);
+  d.setDate(EPOCH_DATE.getDate() + n);
+  return d;
+}
+function dayShortOf(d: Date): string {
+  return DAY_SHORT[d.getDay() === 0 ? 6 : d.getDay() - 1];
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function slotLabel(slot: number) {
@@ -70,7 +88,10 @@ export default function SchedulePage() {
   const [editingId, setEditingId]         = useState<number | null>(null);
   const [editTitle, setEditTitle]         = useState("");
   const [badge, setBadge]                 = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel]          = useState(1); // 0.5– 3.0
+  const [zoomLevel, setZoomLevel]          = useState(1);
+  const [isDark, setIsDark]               = useState(true);
+  const [settingsOpen, setSettingsOpen]   = useState(false);
+  const [infiniteScroll, setInfiniteScroll] = useState(false);
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -111,6 +132,43 @@ export default function SchedulePage() {
   fn.current.setBadge         = setBadge;
   fn.current.setZoomLevel     = setZoomLevel;
 
+  // Theme token shortcuts
+  const th = {
+    root:        isDark ? "bg-zinc-950 text-white"    : "bg-gray-50 text-zinc-900",
+    hdrBg:       isDark ? "bg-zinc-900"               : "bg-white",
+    border:      isDark ? "border-zinc-800"           : "border-gray-200",
+    stickyHdr:   isDark ? "bg-zinc-900/95"            : "bg-white/95",
+    stickyBg:    isDark ? "bg-zinc-950"               : "bg-gray-50",
+    halfBorder:  isDark ? "border-zinc-900"           : "border-gray-100",
+    dayBorder:   isDark ? "border-zinc-800/60"        : "border-gray-200/80",
+    todayCol:    isDark ? "bg-violet-950/15"          : "bg-violet-50/30",
+    todayHdr:    isDark ? "bg-violet-900/20"          : "bg-violet-100/40",
+    timeText:    isDark ? "text-zinc-600"             : "text-gray-400",
+    subtext:     isDark ? "text-zinc-500"             : "text-gray-500",
+    inputBg:     isDark ? "bg-zinc-700"               : "bg-gray-100",
+    modalBg:     isDark ? "bg-zinc-800"               : "bg-white",
+    btnSecondary:isDark ? "bg-zinc-700 text-zinc-300" : "bg-gray-100 text-gray-600",
+  };
+
+  // View geometry (depends on mode)
+  const weekDates       = getWeekDates(weekOffset);
+  const today           = new Date();
+  const todayAbsDay     = dateToAbsDay(today);
+  const colCount        = infiniteScroll ? INF_BUFFER : DAYS;
+  const viewStartAbsDay = infiniteScroll
+    ? todayAbsDay - INF_CENTER
+    : dateToAbsDay(weekDates[0]);
+  const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
+  const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
+
+  // Refs so gesture handlers always read current view values
+  const colCountRef        = useRef(DAYS);
+  const viewStartAbsDayRef = useRef(0);
+  const infiniteScrollRef  = useRef(false);
+  colCountRef.current        = colCount;
+  viewStartAbsDayRef.current = viewStartAbsDay;
+  infiniteScrollRef.current  = infiniteScroll;
+
   // Mutable gesture state
   const gs = useRef({
     startX: 0, startY: 0, t0: 0,
@@ -148,7 +206,7 @@ export default function SchedulePage() {
     const relY = cy - r.top  + el.scrollTop  - HEADER_H;
     const day  = Math.floor(relX / DAY_W);
     const slot = Math.floor(relY / effSlotHRef.current);
-    if (day < 0 || day >= DAYS || slot < 0 || slot >= SLOTS) return null;
+    if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
     return { dayIndex: day, slotIndex: slot };
   };
 
@@ -347,7 +405,8 @@ export default function SchedulePage() {
           fn.current.setTasks(prev => prev.map(task =>
             task.id === taskId ? { ...task, dayIndex: dest.dayIndex, slotIndex: dest.slotIndex } : task
           ));
-          fn.current.setBadge(`${DAY_SHORT[dest.dayIndex]} ${slotLabel(dest.slotIndex)}`);
+          const destDate = absDayToDate(viewStartAbsDayRef.current + dest.dayIndex);
+          fn.current.setBadge(`${dayShortOf(destDate)} ${slotLabel(dest.slotIndex)}`);
         }
         fn.current.setDraggingId(null);
         gs.current.isDragging     = false;
@@ -374,7 +433,8 @@ export default function SchedulePage() {
             const id    = fn.current.nextId();
             const color = fn.current.nextColor();
             fn.current.setTasks(prev => [...prev, { id, title: `Task ${id}`, dayIndex: day, slotIndex: slot, span: 2, color }]);
-            fn.current.setBadge(`${DAY_SHORT[day]} ${slotLabel(slot)}`);
+            const colDate = absDayToDate(viewStartAbsDayRef.current + day);
+            fn.current.setBadge(`${dayShortOf(colDate)} ${slotLabel(slot)}`);
           }
         }
       }
@@ -403,33 +463,48 @@ export default function SchedulePage() {
     return () => clearTimeout(t);
   }, [badge]);
 
-  // Week data
-  const weekDates = getWeekDates(weekOffset);
-  const today     = new Date();
-  const todayIdx  = weekDates.findIndex(d => isSameDay(d, today));
+  // Scroll to today when switching to infinite mode
+  useEffect(() => {
+    if (!infiniteScroll) return;
+    const c = scrollRef.current;
+    if (!c) return;
+    c.scrollLeft = Math.max(0, INF_CENTER * DAY_W - c.clientWidth / 2);
+  }, [infiniteScroll]);
 
-  // Current time position
+  // Week data — kept for week-mode header
+  // (colDates / todayIdx are computed above, before the gesture refs)
   const nowSlot   = today.getHours() * 2 + (today.getMinutes() >= 30 ? 1 : 0);
   const nowFrac   = (today.getMinutes() % 30) / 30;
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
 
+  // Reset tasks when toggling scroll mode to avoid column-index confusion
+  const handleToggleInfiniteScroll = () => {
+    setInfiniteScroll(v => !v);
+    setTasks([]);
+    setResizingId(null);
+  };
+
   return (
-    <div className="flex flex-col h-dvh bg-zinc-950 text-white select-none overflow-hidden">
+    <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`}>
 
       {/* ── App header ───────────────────────────────────────────────────── */}
-      <header className="flex items-center gap-1 px-3 py-2 bg-zinc-900 border-b border-zinc-800 shrink-0">
+      <header className={`flex items-center gap-1 px-3 py-2 ${th.hdrBg} border-b ${th.border} shrink-0`}>
         <button
           onClick={() => setWeekOffset(w => w - 1)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg"
+          className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
         >‹</button>
 
         <div className="flex-1 text-center min-w-0">
           <p className="text-xs font-semibold text-zinc-300 truncate">
-            {weekDates[0]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })}
-            {" – "}
-            {weekDates[6]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric", year: "numeric" })}
+            {infiniteScroll ? "Lịch liên tục" : (
+              <>
+                {weekDates[0]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })}
+                {" – "}
+                {weekDates[6]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric", year: "numeric" })}
+              </>
+            )}
           </p>
           {badge && (
             <p className="text-[10px] text-violet-400 truncate">{badge}</p>
@@ -438,7 +513,7 @@ export default function SchedulePage() {
 
         <button
           onClick={() => setWeekOffset(w => w + 1)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg"
+          className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
         >›</button>
 
         {weekOffset !== 0 && (
@@ -450,7 +525,16 @@ export default function SchedulePage() {
           </button>
         )}
 
-        <a href="/" className="text-xs text-zinc-600 underline ml-1 shrink-0">←</a>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext} shrink-0`}
+          aria-label="Cài đặt"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
       </header>
 
       {/* ── Main scrollable area ─────────────────────────────────────────── */}
@@ -459,29 +543,29 @@ export default function SchedulePage() {
         className="flex-1 overflow-auto"
         style={{ touchAction: "pan-x pan-y" }}
       >
-        <div style={{ width: TIME_W + DAYS * DAY_W }}>
+        <div style={{ width: TIME_W + colCount * DAY_W }}>
 
           {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
-            className="flex z-20 bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-800"
+            className={`flex z-20 ${th.stickyHdr} backdrop-blur-sm border-b ${th.border}`}
             style={{ position: "sticky", top: 0, height: HEADER_H }}
           >
             {/* Top-left corner: sticky in both axes */}
             <div
-              className="bg-zinc-900/95 shrink-0 z-30"
+              className={`${th.stickyHdr} shrink-0 z-30`}
               style={{ position: "sticky", left: 0, width: TIME_W }}
             />
-            {/* Day headers */}
-            {weekDates.map((date, i) => {
+            {/* Day headers: rendered from colDates (7 in week mode, INF_BUFFER in infinite mode) */}
+            {colDates.map((date, i) => {
               const isToday = i === todayIdx;
               return (
                 <div
                   key={i}
                   style={{ width: DAY_W }}
-                  className={`flex flex-col items-center justify-center border-l border-zinc-800 shrink-0 ${isToday ? "bg-violet-900/20" : ""}`}
+                  className={`flex flex-col items-center justify-center border-l ${th.border} shrink-0 ${isToday ? th.todayHdr : ""}`}
                 >
                   <span className={`text-[10px] font-medium uppercase ${isToday ? "text-violet-400" : "text-zinc-500"}`}>
-                    {DAY_SHORT[i]}
+                    {dayShortOf(date)}
                   </span>
                   <span className={`text-base font-bold leading-tight ${isToday ? "text-violet-300 bg-violet-600 rounded-full w-7 h-7 flex items-center justify-center" : "text-zinc-200"}`}>
                     {date.getDate()}
@@ -496,17 +580,17 @@ export default function SchedulePage() {
 
             {/* Time labels: sticky left so it stays visible on horizontal scroll */}
             <div
-              className="bg-zinc-950 z-10 shrink-0"
+              className={`${th.stickyBg} z-10 shrink-0`}
               style={{ position: "sticky", left: 0, width: TIME_W }}
             >
               {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
                   key={slot}
                   style={{ height: effSlotH }}
-                  className="flex items-start justify-end pr-1.5 border-t border-zinc-900"
+                  className={`flex items-start justify-end pr-1.5 border-t ${th.halfBorder}`}
                 >
                   {slot % 2 === 0 && (
-                    <span className="text-[9px] text-zinc-600 -mt-1 leading-none tabular-nums">
+                    <span className={`text-[9px] ${th.timeText} -mt-1 leading-none tabular-nums`}>
                       {slotLabel(slot)}
                     </span>
                   )}
@@ -515,21 +599,21 @@ export default function SchedulePage() {
             </div>
 
             {/* ── Grid area ────────────────────────────────────────────── */}
-            <div style={{ position: "relative", width: DAYS * DAY_W, height: SLOTS * effSlotH }}>
+            <div style={{ position: "relative", width: colCount * DAY_W, height: SLOTS * effSlotH }}>
               {/* Background slot rows */}
               {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
                   key={slot}
                   style={{ height: effSlotH, display: "flex" }}
-                  className={slot % 2 === 0 ? "border-t border-zinc-800" : "border-t border-zinc-900"}
+                  className={slot % 2 === 0 ? `border-t ${th.border}` : `border-t ${th.halfBorder}`}
                 >
-                  {Array.from({ length: DAYS }, (_, day) => (
+                  {Array.from({ length: colCount }, (_, day) => (
                     <div
                       key={day}
                       data-day={day}
                       data-slot={slot}
                       style={{ width: DAY_W }}
-                      className={`shrink-0 border-l border-zinc-800/60 ${day === todayIdx ? "bg-violet-950/15" : ""}`}
+                      className={`shrink-0 border-l ${th.dayBorder} ${day === todayIdx ? th.todayCol : ""}`}
                     />
                   ))}
                 </div>
@@ -548,6 +632,8 @@ export default function SchedulePage() {
 
               {/* Task blocks */}
               {tasks.map(task => {
+                const colIdx = task.dayIndex;
+                if (colIdx < 0 || colIdx >= colCount) return null; // outside current view
                 const isDraggingThis = draggingId    === task.id;
                 const isResizing     = resizingId    === task.id;
                 const isLongPressed  = longPressedId === task.id;
@@ -560,7 +646,7 @@ export default function SchedulePage() {
                     data-task-id={task.id}
                     className="absolute overflow-hidden"
                     style={{
-                      left:       task.dayIndex * DAY_W + 2,
+                      left:       colIdx * DAY_W + 2,
                       top:        task.slotIndex * effSlotH,
                       width:      DAY_W - 4,
                       height:     h,
@@ -635,6 +721,50 @@ export default function SchedulePage() {
         </div>
       )}
 
+      {/* ── Settings sidebar ─────────────────────────────────────────────── */}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSettingsOpen(false)} />
+          <div className={`relative w-72 h-full ${th.root} flex flex-col border-l ${th.border} shadow-2xl`}>
+            <div className={`flex items-center justify-between px-4 py-4 border-b ${th.border} shrink-0`}>
+              <h2 className="font-semibold text-base">Cài đặt</h2>
+              <button onClick={() => setSettingsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`}>✕</button>
+            </div>
+            <div className="flex-1 px-4 py-5 overflow-y-auto">
+              {/* Dark / Light toggle */}
+              <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
+                <div>
+                  <p className="text-sm font-medium">Giao diện</p>
+                  <p className={`text-xs ${th.subtext} mt-0.5`}>{isDark ? "Tối" : "Sáng"}</p>
+                </div>
+                <button
+                  onClick={() => setIsDark(d => !d)}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${isDark ? "bg-violet-600" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${isDark ? "translate-x-6" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+
+              {/* Infinite horizontal scroll toggle */}
+              <div className="flex items-center justify-between py-4">
+                <div>
+                  <p className="text-sm font-medium">Cuộn ngang vô tận</p>
+                  <p className={`text-xs ${th.subtext} mt-0.5`}>
+                    {infiniteScroll ? `${INF_BUFFER} ngày (ñặt lại task khi bật/tắt)` : "Chỉ hiện 1 tuần"}
+                  </p>
+                </div>
+                <button
+                  onClick={handleToggleInfiniteScroll}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${infiniteScroll ? "bg-violet-600" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${infiniteScroll ? "translate-x-6" : "translate-x-0.5"}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Edit modal ───────────────────────────────────────────────────── */}
       {editingId !== null && (() => {
         const task = tasks.find(t => t.id === editingId);
@@ -645,13 +775,13 @@ export default function SchedulePage() {
             onClick={() => setEditingId(null)}
           >
             <div
-              className="bg-zinc-800 rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs"
+              className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs`}
               onClick={e => e.stopPropagation()}
             >
               <p className="text-xs text-zinc-400 mb-2">Tên công việc</p>
               <input
                 autoFocus
-                className="w-full bg-zinc-700 text-white rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500/60"
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
                 onKeyDown={e => {
@@ -665,7 +795,7 @@ export default function SchedulePage() {
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setEditingId(null)}
-                  className="flex-1 py-2.5 rounded-xl bg-zinc-700 text-zinc-300 text-xs"
+                  className={`flex-1 py-2.5 rounded-xl ${th.btnSecondary} text-xs`}
                 >Huỷ</button>
                 <button
                   onClick={() => {
