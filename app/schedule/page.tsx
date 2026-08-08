@@ -411,6 +411,16 @@ function withTaskAudit(task: Task, actor: SessionUser | null): Task {
   };
 }
 
+function withTaskConfirmOnly(task: Task, actor: SessionUser | null): Task {
+  if (!actor) return task;
+  if (task.confirmedByUserIds.includes(actor.id)) return task;
+
+  return {
+    ...task,
+    confirmedByUserIds: [...task.confirmedByUserIds, actor.id],
+  };
+}
+
 function renderSmallAvatar(name: string | null, avatar: string | null, fallbackSeed?: number | null) {
   const label = (name?.trim().charAt(0) || (fallbackSeed ? String(fallbackSeed).charAt(0) : "?")).toUpperCase();
 
@@ -724,7 +734,7 @@ export default function SchedulePage() {
 
     if (action === "confirm") {
       if (scheduleScopeRef.current !== "COMPANY") return;
-      fn.current.setTasks(prev => prev.map((t) => (t.id === taskId ? withTaskAudit(t, sessionUserRef.current) : t)));
+      fn.current.setTasks(prev => prev.map((t) => (t.id === taskId ? withTaskConfirmOnly(t, sessionUserRef.current) : t)));
       fn.current.setBadge("Đã xác nhận task");
       return;
     }
@@ -1760,13 +1770,19 @@ export default function SchedulePage() {
 
                     {isCompanySchedule && confirmerUsers.length > 0 && (
                       <div className="mt-auto flex items-center gap-1.5 text-white/70 text-[9px] truncate">
-                        <span>đã xác nhận:</span>
-                        <div className="flex items-center gap-1">
-                          {confirmerUsers.slice(0, 4).map((user) => (
-                            <div key={user.id}>{renderSmallAvatar(user.name, user.avatar, user.id)}</div>
+                        <span>xác nhận:</span>
+                        <div className="flex items-center">
+                          {confirmerUsers.slice(0, 6).map((user, idx) => (
+                            <div
+                              key={user.id}
+                              className={idx === 0 ? "" : "-ml-1.5"}
+                              style={{ zIndex: 20 - idx }}
+                            >
+                              {renderSmallAvatar(user.name, user.avatar, user.id)}
+                            </div>
                           ))}
-                          {confirmerUsers.length > 4 && (
-                            <span className="text-[8px] text-white/70">+{confirmerUsers.length - 4}</span>
+                          {confirmerUsers.length > 6 && (
+                            <span className="ml-1 text-[8px] text-white/70">+{confirmerUsers.length - 6}</span>
                           )}
                         </div>
                       </div>
