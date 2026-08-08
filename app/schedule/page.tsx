@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +70,19 @@ export default function SchedulePage() {
   const [editingId, setEditingId]         = useState<number | null>(null);
   const [editTitle, setEditTitle]         = useState("");
   const [badge, setBadge]                 = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel]          = useState(1); // 0.5– 3.0
+
+  // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
+  const effSlotH    = Math.round(SLOT_H * zoomLevel);
+  const effSlotHRef = useRef(SLOT_H);
+  const zoomRef     = useRef(1);
+  effSlotHRef.current = effSlotH;
+  zoomRef.current     = zoomLevel;
+
+  // Saved state for scroll-position preservation during zoom
+  const pinchZoomBeforeRef   = useRef(1);
+  const pinchScrollTopRef    = useRef(0);
+  const pinchCenterYRef      = useRef(0);
 
   const taskIdRef    = useRef(0);
   const colorRef     = useRef(0);
@@ -85,7 +98,7 @@ export default function SchedulePage() {
   // Callback refs
   const fn = useRef({
     setTasks, setDraggingId, setLongPressedId,
-    setDragPos, setResizingId, setEditingId, setEditTitle, setBadge,
+    setDragPos, setResizingId, setEditingId, setEditTitle, setBadge, setZoomLevel,
     nextId:    (): number => ++taskIdRef.current,
     nextColor: (): string => { const c = COLORS[colorRef.current % COLORS.length]; colorRef.current++; return c; },
   });
@@ -97,6 +110,7 @@ export default function SchedulePage() {
   fn.current.setEditingId     = setEditingId;
   fn.current.setEditTitle     = setEditTitle;
   fn.current.setBadge         = setBadge;
+  fn.current.setZoomLevel     = setZoomLevel;
 
   // Mutable gesture state
   const gs = useRef({
@@ -104,6 +118,8 @@ export default function SchedulePage() {
     isDragging: false,
     longPressFired: false,
     isResizeDragging: false,
+    isPinching: false,
+    pinchDist0: 0,
     timer: null as ReturnType<typeof setTimeout> | null,
     draggingTaskId:   null as number | null,
     resizeTaskId:     null as number | null,
@@ -128,10 +144,25 @@ export default function SchedulePage() {
     const relX = cx - r.left + el.scrollLeft - TIME_W;
     const relY = cy - r.top  + el.scrollTop  - HEADER_H;
     const day  = Math.floor(relX / DAY_W);
-    const slot = Math.floor(relY / SLOT_H);
+    const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= DAYS || slot < 0 || slot >= SLOTS) return null;
     return { dayIndex: day, slotIndex: slot };
   };
+
+  // Adjust scrollTop after zoom to keep the pinch center fixed in the viewport
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const rect         = container.getBoundingClientRect();
+    const oldEffSlotH  = SLOT_H * pinchZoomBeforeRef.current;
+    const newEffSlotH  = SLOT_H * zoomLevel;
+    if (oldEffSlotH === newEffSlotH) return;
+    const pinchScreenY  = pinchCenterYRef.current;
+    const slotsAtPinch  = (pinchScrollTopRef.current + pinchScreenY - rect.top - HEADER_H) / oldEffSlotH;
+    const newScrollTop  = HEADER_H + slotsAtPinch * newEffSlotH - (pinchScreenY - rect.top);
+    container.scrollTop = Math.max(0, newScrollTop);
+    pinchZoomBeforeRef.current = zoomLevel; // update baseline for next pinch step
+  }, [zoomLevel]);
 
   // ── Touch handler ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -140,11 +171,27 @@ export default function SchedulePage() {
 
     // Scroll to current time on mount
     const now = new Date();
-    container.scrollTop = Math.max(0, (now.getHours() * 2 - 3) * SLOT_H);
+    container.scrollTop = Math.max(0, (now.getHours() * 2 - 3) * effSlotHRef.current);
 
     const onStart = (e: TouchEvent) => {
       const t  = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
+
+      // ── Pinch to zoom (2 fingers) ──────────────────────────────────────────
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const t1 = e.touches[0], t2 = e.touches[1];
+        clearTimer();
+        gs.current.isDragging      = false;
+        gs.current.longPressFired  = false;
+        gs.current.isPinching      = true;
+        gs.current.pinchDist0      = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        // Save state for scroll-position preservation in useLayoutEffect
+        pinchZoomBeforeRef.current  = zoomRef.current;
+        pinchScrollTopRef.current   = container.scrollTop;
+        pinchCenterYRef.current     = (t1.clientY + t2.clientY) / 2;
+        return;
+      }
 
       // ── Action buttons (edit/remove) — no preventDefault so tap fires ─────
       const actionEl = el?.closest<HTMLElement>("[data-action]");
@@ -164,7 +211,7 @@ export default function SchedulePage() {
           const rect = container.getBoundingClientRect();
           gs.current.isResizeDragging = true;
           gs.current.resizeTaskId     = taskId;
-          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + task.slotIndex * SLOT_H;
+          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + task.slotIndex * effSlotHRef.current;
           gs.current.resizeMaxSpan    = SLOTS - task.slotIndex;
           resizeSpanRef.current       = task.span;
           return;
@@ -199,17 +246,30 @@ export default function SchedulePage() {
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0];
 
-      // ── Resize drag ───────────────────────────────────────────────────────
+      // ── Pinch zoom update ───────────────────────────────────────────────────
+      if (gs.current.isPinching && e.touches.length >= 2) {
+        e.preventDefault();
+        const t1 = e.touches[0], t2 = e.touches[1];
+        const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const newZoom = Math.min(3, Math.max(0.5,
+          pinchZoomBeforeRef.current * newDist / gs.current.pinchDist0
+        ));
+        fn.current.setZoomLevel(newZoom);
+        return;
+      }
+
+      // ── Resize drag ─────────────────────────────────────────────────
       if (gs.current.isResizeDragging && gs.current.resizeTaskId !== null) {
         e.preventDefault();
-        const rawH    = Math.max(SLOT_H, t.clientY - gs.current.resizeTopClientY);
-        const snapped = Math.min(Math.max(1, Math.round(rawH / SLOT_H)), gs.current.resizeMaxSpan);
+        const eSH     = effSlotHRef.current;
+        const rawH    = Math.max(eSH, t.clientY - gs.current.resizeTopClientY);
+        const snapped = Math.min(Math.max(1, Math.round(rawH / eSH)), gs.current.resizeMaxSpan);
         if (snapped !== resizeSpanRef.current) {
           resizeSpanRef.current = snapped;
           const taskEl = taskEls.current.get(gs.current.resizeTaskId);
           if (taskEl) {
             taskEl.style.transition = "height 0.08s cubic-bezier(0.34,1.56,0.64,1)";
-            taskEl.style.height = `${snapped * SLOT_H}px`;
+            taskEl.style.height = `${snapped * eSH}px`;
           }
         }
         return;
@@ -238,6 +298,10 @@ export default function SchedulePage() {
     };
 
     const onEnd = (e: TouchEvent) => {
+      if (gs.current.isPinching) {
+        if (e.touches.length < 2) gs.current.isPinching = false;
+        return;
+      }
       clearTimer();
       const t = e.changedTouches[0];
 
@@ -342,7 +406,7 @@ export default function SchedulePage() {
   // Current time position
   const nowSlot   = today.getHours() * 2 + (today.getMinutes() >= 30 ? 1 : 0);
   const nowFrac   = (today.getMinutes() % 30) / 30;
-  const nowTop    = nowSlot * SLOT_H + nowFrac * SLOT_H;
+  const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
 
@@ -433,7 +497,7 @@ export default function SchedulePage() {
               {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
                   key={slot}
-                  style={{ height: SLOT_H }}
+                  style={{ height: effSlotH }}
                   className="flex items-start justify-end pr-1.5 border-t border-zinc-900"
                 >
                   {slot % 2 === 0 && (
@@ -446,12 +510,12 @@ export default function SchedulePage() {
             </div>
 
             {/* ── Grid area ────────────────────────────────────────────── */}
-            <div style={{ position: "relative", width: DAYS * DAY_W, height: SLOTS * SLOT_H }}>
+            <div style={{ position: "relative", width: DAYS * DAY_W, height: SLOTS * effSlotH }}>
               {/* Background slot rows */}
               {Array.from({ length: SLOTS }, (_, slot) => (
                 <div
                   key={slot}
-                  style={{ height: SLOT_H, display: "flex" }}
+                  style={{ height: effSlotH, display: "flex" }}
                   className={slot % 2 === 0 ? "border-t border-zinc-800" : "border-t border-zinc-900"}
                 >
                   {Array.from({ length: DAYS }, (_, day) => (
@@ -482,7 +546,7 @@ export default function SchedulePage() {
                 const isDraggingThis = draggingId    === task.id;
                 const isResizing     = resizingId    === task.id;
                 const isLongPressed  = longPressedId === task.id;
-                const h = task.span * SLOT_H;
+                const h = task.span * effSlotH;
 
                 return (
                   <div
@@ -492,7 +556,7 @@ export default function SchedulePage() {
                     className="absolute overflow-hidden"
                     style={{
                       left:       task.dayIndex * DAY_W + 2,
-                      top:        task.slotIndex * SLOT_H,
+                      top:        task.slotIndex * effSlotH,
                       width:      DAY_W - 4,
                       height:     h,
                       borderRadius: 8,
@@ -554,9 +618,9 @@ export default function SchedulePage() {
           className={`fixed pointer-events-none rounded-lg ${draggingTask.color} flex flex-col p-1.5 shadow-2xl z-50`}
           style={{
             left:      dragPos.x - (DAY_W - 4) / 2,
-            top:       dragPos.y - draggingTask.span * SLOT_H / 2,
+            top:       dragPos.y - draggingTask.span * effSlotH / 2,
             width:     DAY_W - 4,
-            height:    draggingTask.span * SLOT_H,
+            height:    draggingTask.span * effSlotH,
             opacity:   0.9,
             transform: "scale(1.06)",
           }}
