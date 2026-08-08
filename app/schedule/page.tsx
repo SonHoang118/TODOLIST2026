@@ -25,6 +25,7 @@ const COLORS = [
 ];
 
 const DEFAULT_TASK_BG = "__DEFAULT_TASK_BG__";
+const PERSONAL_TASK_BG = "__PERSONAL_TASK_BG__";
 const LEGACY_DEFAULT_TASK_BG = "bg-zinc-700";
 
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -336,6 +337,9 @@ function apiTaskToLocalTask(apiTask: ApiTask): Task {
 function resolveTaskBgClass(taskColor: string, isDark: boolean): string {
   if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) {
     return isDark ? "bg-sky-700/80" : "bg-sky-500/85";
+  }
+  if (taskColor === PERSONAL_TASK_BG) {
+    return isDark ? "bg-emerald-700/75" : "bg-emerald-500/70";
   }
   return taskColor;
 }
@@ -801,7 +805,6 @@ export default function SchedulePage() {
             const day   = gs.current.touchedDay;
             const slot  = gs.current.touchedSlot;
             const id    = fn.current.nextId();
-            const color = DEFAULT_TASK_BG;
             const ownerName = usersForAuthRef.current.find((u) => u.id === authUserIdRef.current)?.name ?? null;
             const actorUser = sessionUserRef.current;
             const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
@@ -810,6 +813,7 @@ export default function SchedulePage() {
             const initialLabel: TaskLabelValue = actorUser && authUserIdRef.current === actorUser.id
               ? PERSONAL_TASK_LABEL
               : DEFAULT_TASK_LABEL;
+            const color = initialLabel === PERSONAL_TASK_LABEL ? PERSONAL_TASK_BG : DEFAULT_TASK_BG;
             const initialStatus: TaskStatus = actorUser && authUserIdRef.current === actorUser.id
               ? "IN_PROGRESS"
               : "PENDING";
@@ -1300,9 +1304,10 @@ export default function SchedulePage() {
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
                 const taskBgClass = resolveTaskBgClass(task.color, isDark);
-                const subtitleText = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
+                const subtitleLabel = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
                   ? TASK_LABEL_TEXT.PERSONAL
                   : "";
+                const subtitleText = subtitleLabel ? `#${subtitleLabel}` : "";
                 const h = task.span * effSlotH;
 
                 return (
@@ -1375,7 +1380,7 @@ export default function SchedulePage() {
                     )}
                     {subtitleText && (
                       <p
-                        className="text-white/75 text-[9px]"
+                        className="text-white/75 text-[9px] italic"
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1639,7 +1644,7 @@ export default function SchedulePage() {
                 </div>
                 <div className="rounded-xl bg-black/25 px-3 py-2">
                   <p className="text-[11px] text-white/70">Nhãn</p>
-                  <p className="mt-0.5 text-sm wrap-break-word text-white">{taskLabelText(task.label)}</p>
+                  <p className="mt-0.5 text-sm italic wrap-break-word text-white">#{taskLabelText(task.label)}</p>
                 </div>
                 <div className="rounded-xl bg-black/25 px-3 py-2">
                   <p className="text-[11px] text-white/70">Trạng thái</p>
