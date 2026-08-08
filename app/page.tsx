@@ -46,18 +46,20 @@ export default function Home() {
       const response = await fetch("/api/users", { cache: "no-store" });
       const data = (await response.json()) as { users?: PublicUser[]; error?: string };
 
-      if (!response.ok || !data.users) {
+      if (!response.ok || !Array.isArray(data.users)) {
         throw new Error(data.error ?? "Không thể tải danh sách user.");
       }
 
-      setUsers(data.users);
-      setSelectedUserId((prev) => prev ?? data.users[0]?.id ?? null);
+      const fetchedUsers = data.users;
+
+      setUsers(fetchedUsers);
+      setSelectedUserId((prev) => prev ?? fetchedUsers[0]?.id ?? null);
 
       const rawStored = localStorage.getItem(STORAGE_KEY);
       if (rawStored) {
         const parsed = JSON.parse(rawStored) as { id?: number };
         if (typeof parsed.id === "number") {
-          const matched = data.users.find((u) => u.id === parsed.id) ?? null;
+          const matched = fetchedUsers.find((u) => u.id === parsed.id) ?? null;
           setCurrentUser(matched);
         }
       }

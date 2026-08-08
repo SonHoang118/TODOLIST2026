@@ -58,7 +58,7 @@ export async function ensureUsersTable(): Promise<void> {
 export async function ensureBootstrapAdmin(): Promise<void> {
   const sql = getSql();
 
-  const existing = await sql<{ id: number }[]>`
+  const existing = await sql`
     SELECT id
     FROM users
     WHERE role = 'ADMIN'
@@ -85,38 +85,48 @@ export async function createTempUser(input: CreateUserInput): Promise<PublicUser
 
   const passwordHash = await hash(input.password, 10);
 
-  const rows = await sql<DbPublicUser[]>`
+  const rows = await sql`
     INSERT INTO users (role, name, avatar, password)
     VALUES (${input.role}, ${input.name}, ${input.avatar}, ${passwordHash})
     RETURNING id, role, name, avatar, created_at
   `;
 
-  return mapPublicUser(rows[0]);
+  const created = rows[0];
+  if (!created) {
+    throw new Error("Could not create user.");
+  }
+
+  return mapPublicUser(toDbPublicUser(created));
 }
 
 export async function listTempUsers(): Promise<PublicUser[]> {
   const sql = getSql();
 
-  const rows = await sql<DbPublicUser[]>`
+  const rows = await sql`
     SELECT id, role, name, avatar, created_at
     FROM users
     ORDER BY CASE WHEN role = 'ADMIN' THEN 0 ELSE 1 END, created_at ASC
   `;
 
-  return rows.map(mapPublicUser);
+  return rows.map((row) => mapPublicUser(toDbPublicUser(row)));
 }
 
 export async function authenticateTempUser(userId: number, password: string): Promise<PublicUser | null> {
   const sql = getSql();
 
-  const rows = await sql<DbAuthUser[]>`
+  const rows = await sql`
     SELECT id, role, name, avatar, password, created_at
     FROM users
     WHERE id = ${userId}
     LIMIT 1
   `;
 
-  const user = rows[0];
+  const rawUser = rows[0];
+  if (!rawUser) {
+    return null;
+  }
+
+  const user = toDbAuthUser(rawUser);
   if (!user) {
     return null;
   }
@@ -132,7 +142,7 @@ export async function authenticateTempUser(userId: number, password: string): Pr
 export async function assertAdminUser(userId: number): Promise<void> {
   const sql = getSql();
 
-  const rows = await sql<{ id: number }[]>`
+  const rows = await sql`
     SELECT id
     FROM users
     WHERE id = ${userId} AND role = 'ADMIN'
@@ -152,4 +162,50 @@ function mapPublicUser(user: DbPublicUser): PublicUser {
     avatar: user.avatar,
     createdAt: user.created_at,
   };
+}
+
+function toDbPublicUser(row: Record<string, unknown>): DbPublicUser {
+  const role = row.role;
+  if (role !== "ADMIN" && role !== "STAFF") {
+    throw new Error("Invalid user role in database.");
+  }
+
+  return {
+    id: toNumber(row.id),
+    role,
+    name: String(row.name ?? ""),
+    avatar: String(row.avatar ?? ""),
+    created_at: toIsoString(row.created_at),
+  };
+}
+
+function toDbAuthUser(row: Record<string, unknown>): DbAuthUser | null {
+  if (typeof row.password !== "string") {
+    return null;
+  }
+
+  return {
+    ...toDbPublicUser(row),
+    password: row.password,
+  };
+}
+
+function toNumber(value: unknown): number {
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error("Invalid numeric value in database.");
+  }
+  return parsed;
+}
+
+function toIsoString(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return String(value ?? "");
 }
