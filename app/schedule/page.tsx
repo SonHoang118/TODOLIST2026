@@ -120,6 +120,7 @@ export default function SchedulePage() {
     isResizeDragging: false,
     isPinching: false,
     pinchDist0: 0,
+    pinchZoom0: 1,  // zoom at pinch-gesture start, fixed until next pinch
     timer: null as ReturnType<typeof setTimeout> | null,
     draggingTaskId:   null as number | null,
     resizeTaskId:     null as number | null,
@@ -161,7 +162,7 @@ export default function SchedulePage() {
     const slotsAtPinch  = (pinchScrollTopRef.current + pinchScreenY - rect.top - HEADER_H) / oldEffSlotH;
     const newScrollTop  = HEADER_H + slotsAtPinch * newEffSlotH - (pinchScreenY - rect.top);
     container.scrollTop = Math.max(0, newScrollTop);
-    pinchZoomBeforeRef.current = zoomLevel; // update baseline for next pinch step
+    // Note: pinchZoomBeforeRef is updated in onMove before each setZoomLevel call, not here
   }, [zoomLevel]);
 
   // ── Touch handler ─────────────────────────────────────────────────────────
@@ -186,10 +187,11 @@ export default function SchedulePage() {
         gs.current.longPressFired  = false;
         gs.current.isPinching      = true;
         gs.current.pinchDist0      = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        // Save state for scroll-position preservation in useLayoutEffect
-        pinchZoomBeforeRef.current  = zoomRef.current;
-        pinchScrollTopRef.current   = container.scrollTop;
-        pinchCenterYRef.current     = (t1.clientY + t2.clientY) / 2;
+        gs.current.pinchZoom0      = zoomRef.current;  // fixed for the whole gesture
+        // Save baseline for first useLayoutEffect step
+        pinchZoomBeforeRef.current = zoomRef.current;
+        pinchScrollTopRef.current  = container.scrollTop;
+        pinchCenterYRef.current    = (t1.clientY + t2.clientY) / 2;
         return;
       }
 
@@ -252,8 +254,12 @@ export default function SchedulePage() {
         const t1 = e.touches[0], t2 = e.touches[1];
         const newDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const newZoom = Math.min(3, Math.max(0.5,
-          pinchZoomBeforeRef.current * newDist / gs.current.pinchDist0
+          gs.current.pinchZoom0 * newDist / gs.current.pinchDist0  // ratio from gesture start
         ));
+        // Save current state BEFORE setZoomLevel so useLayoutEffect gets correct baseline
+        pinchZoomBeforeRef.current = zoomRef.current;
+        pinchScrollTopRef.current  = container.scrollTop;
+        pinchCenterYRef.current    = (t1.clientY + t2.clientY) / 2;
         fn.current.setZoomLevel(newZoom);
         return;
       }
