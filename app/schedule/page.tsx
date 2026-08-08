@@ -648,6 +648,14 @@ export default function SchedulePage() {
         }
         fn.current.setLongPressedId(null);
 
+      // ── Quick tap on task → open detail modal ───────────────────────────
+      } else if (gs.current.touchedTaskId !== null) {
+        const adx = Math.abs(t.clientX - gs.current.startX);
+        const ady = Math.abs(t.clientY - gs.current.startY);
+        if (adx < 10 && ady < 10 && Date.now() - gs.current.t0 < LONG_PRESS_MS) {
+          applyTaskAction("edit", gs.current.touchedTaskId);
+        }
+
       // ── Quick tap → create task ───────────────────────────────────────────
       } else if (gs.current.touchedTaskId === null) {
         const adx = Math.abs(t.clientX - gs.current.startX);
