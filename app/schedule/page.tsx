@@ -467,7 +467,7 @@ export default function SchedulePage() {
   const [isDark, setIsDark]               = useState(true);
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
-  const [infiniteScroll, setInfiniteScroll] = useState(false);
+  const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
   const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
@@ -1490,6 +1490,9 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
+                const assignedFromUser = task.assignedFromName
+                  ? usersForAuth.find((user) => user.name === task.assignedFromName)
+                  : undefined;
                 const taskBgClass = isDone
                   ? ""
                   : isHexColor(task.color)
@@ -1509,7 +1512,7 @@ export default function SchedulePage() {
                     key={task.id}
                     ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
                     data-task-id={task.id}
-                    className="absolute overflow-hidden"
+                    className="absolute overflow-visible"
                     style={{
                       left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
@@ -1585,9 +1588,6 @@ export default function SchedulePage() {
                         {subtitleText}
                       </p>
                     )}
-                    {task.assignedFromName && (
-                      <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
-                    )}
 
                     {isPending && (
                       isViewingOwnSchedule ? (
@@ -1619,6 +1619,25 @@ export default function SchedulePage() {
                       </div>
                     )}
                   </div>
+
+                  {task.assignedFromName && (
+                    <div
+                      className="absolute -top-2 -right-2 z-20"
+                      title={`Được giao từ: ${task.assignedFromName}`}
+                    >
+                      {assignedFromUser?.avatar ? (
+                        <img
+                          src={assignedFromUser.avatar}
+                          alt={task.assignedFromName}
+                          className="h-5 w-5 rounded-full object-cover border border-zinc-200/70 shadow"
+                        />
+                      ) : (
+                        <div className="h-5 w-5 rounded-full bg-zinc-700 text-white text-[9px] font-semibold flex items-center justify-center border border-zinc-200/70 shadow">
+                          {task.assignedFromName.trim().charAt(0).toUpperCase() || "?"}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Resize handle (bottom bar) */}
                   {isResizing && (
