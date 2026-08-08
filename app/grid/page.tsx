@@ -16,8 +16,8 @@ const LONG_PRESS_MS  = 350;
 const DRAG_DELTA     = 8;
 const HANDLE_H       = 24;  // resize handle bar height px
 
-// Valid snap heights: sub-cell quarters, then whole cells
-const SNAP_SPANS = [0.25, 0.5, 0.75, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+// All valid snap heights in ¼-cell increments (0.25 → ROWS)
+const SNAP_SPANS = Array.from({ length: ROWS * 4 }, (_, i) => (i + 1) * 0.25);
 const PALETTE    = [
   "bg-violet-600", "bg-emerald-600", "bg-amber-500",  "bg-sky-600",
   "bg-rose-600",   "bg-teal-600",    "bg-orange-500", "bg-indigo-600",
@@ -196,9 +196,15 @@ export default function GridPage() {
       if (gs.current.isResizeDragging && gs.current.resizeBlockId !== null) {
         const rawH    = Math.max(spanToPx(0.25), t.clientY - gs.current.resizeBlockTopScreenY);
         const snapped = snapSpan(rawH, gs.current.resizeMaxSpan);
-        resizeSpanRef.current = snapped;
-        const blockEl = blockEls.current.get(gs.current.resizeBlockId);
-        if (blockEl) blockEl.style.height = `${spanToPx(snapped)}px`;
+        if (resizeSpanRef.current !== snapped) {
+          resizeSpanRef.current = snapped;
+          const blockEl = blockEls.current.get(gs.current.resizeBlockId);
+          if (blockEl) {
+            // Short transition only when snapping to a new increment
+            blockEl.style.transition = "height 0.1s cubic-bezier(0.34,1.56,0.64,1)";
+            blockEl.style.height = `${spanToPx(snapped)}px`;
+          }
+        }
         return;
       }
 
@@ -416,8 +422,7 @@ export default function GridPage() {
                   height:       h,
                   borderRadius: 16,
                   zIndex:       isDraggingThis ? 10 : isResizing ? 8 : 1,
-                  // Smooth height transition only when not actively dragging resize handle
-                  transition:   gs.current.isResizeDragging ? "none" : "height 0.12s ease",
+                  transition:   "height 0.15s ease",
                 }}
               >
                 {/* Block body */}
