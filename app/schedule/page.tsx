@@ -372,8 +372,8 @@ function colorToPickerHex(taskColor: string): string {
 
 function doneTaskBgClass(isDark: boolean): string {
   return isDark
-    ? "bg-zinc-600/70 border border-zinc-400/60"
-    : "bg-zinc-500/65 border border-zinc-300/80";
+    ? "border border-zinc-300/60 brightness-90"
+    : "border border-zinc-500/50 brightness-95";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
