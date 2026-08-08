@@ -418,33 +418,6 @@ function lerpColor(a: RgbColor, b: RgbColor, t: number): RgbColor {
   };
 }
 
-function slotGradientColor(slot: number, isDark: boolean): string {
-  const minute = slot * 30;
-  const anchors = TIME_GRADIENT_ANCHORS;
-  const first = anchors[0];
-  const last = anchors[anchors.length - 1];
-
-  if (!first || !last) return isDark ? "rgba(15, 23, 42, 0.35)" : "rgba(203, 213, 225, 0.35)";
-
-  for (let i = 0; i < anchors.length - 1; i++) {
-    const start = anchors[i];
-    const end = anchors[i + 1];
-    if (minute >= start.minute && minute <= end.minute) {
-      const range = end.minute - start.minute || 1;
-      const t = (minute - start.minute) / range;
-      const c = lerpColor(hexToRgb(start.color), hexToRgb(end.color), t);
-      const alpha = isDark ? 0.36 : 0.28;
-      return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-    }
-  }
-
-  const wrapRange = (first.minute + 1440) - last.minute;
-  const wrapT = wrapRange <= 0 ? 0 : (minute + 1440 - last.minute) / wrapRange;
-  const c = lerpColor(hexToRgb(last.color), hexToRgb(first.color), wrapT);
-  const alpha = isDark ? 0.36 : 0.28;
-  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-}
-
 function slotGradientTextColor(slot: number, isDark: boolean): string {
   const minute = slot * 30;
   const anchors = TIME_GRADIENT_ANCHORS;
@@ -1488,10 +1461,7 @@ export default function SchedulePage() {
                       key={day}
                       data-day={day}
                       data-slot={slot}
-                      style={{
-                        width: dayWidth,
-                        backgroundColor: slotGradientColor(slot, isDark),
-                      }}
+                      style={{ width: dayWidth }}
                       className={`shrink-0 border-l ${th.dayBorder} ${day === todayIdx ? th.todayCol : ""}`}
                     />
                   ))}
