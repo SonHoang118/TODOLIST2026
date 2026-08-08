@@ -393,12 +393,40 @@ export default function SchedulePage() {
     touchedTaskId:    null as number | null,
     touchedDay:       null as number | null,
     touchedSlot:      null as number | null,
-    pendingAction:    null as "edit" | "remove" | null,
+    pendingAction:    null as "edit" | "remove" | "accept" | "complete" | null,
     pendingTaskId:    null as number | null,
   });
 
   const clearTimer = () => {
     if (gs.current.timer) { clearTimeout(gs.current.timer); gs.current.timer = null; }
+  };
+
+  const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete", taskId: number) => {
+    if (action === "remove") {
+      fn.current.setTasks(prev => prev.filter(t => t.id !== taskId));
+      fn.current.setResizingId(null);
+      fn.current.setBadge("Đã xoá");
+      return;
+    }
+
+    if (action === "edit") {
+      const task = tasksRef.current.find(t => t.id === taskId);
+      fn.current.setEditTitle(task?.title ?? "");
+      setEditDescription(task?.description ?? "");
+      setEditLabel(task?.label ?? "");
+      setEditStatus(task?.status ?? "PENDING");
+      fn.current.setEditingId(taskId);
+      return;
+    }
+
+    if (action === "accept") {
+      fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "IN_PROGRESS" } : t));
+      fn.current.setBadge("Đã nhận task");
+      return;
+    }
+
+    fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "DONE" } : t));
+    fn.current.setBadge("Đã hoàn thành");
   };
 
   // Convert screen coords to { dayIndex, slotIndex } within the current scroll position
@@ -454,7 +482,7 @@ export default function SchedulePage() {
       // ── Action buttons (edit/remove) — no preventDefault so tap fires ─────
       const actionEl = el?.closest<HTMLElement>("[data-action]");
       if (actionEl) {
-        gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove";
+        gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete";
         gs.current.pendingTaskId  = Number(actionEl.dataset.taskId);
         return;
       }
@@ -576,18 +604,7 @@ export default function SchedulePage() {
       if (gs.current.pendingAction !== null) {
         const action = gs.current.pendingAction;
         const taskId = gs.current.pendingTaskId!;
-        if (action === "remove") {
-          fn.current.setTasks(prev => prev.filter(t => t.id !== taskId));
-          fn.current.setResizingId(null);
-          fn.current.setBadge("Đã xoá");
-        } else {
-          const task = tasksRef.current.find(t => t.id === taskId);
-          fn.current.setEditTitle(task?.title ?? "");
-          setEditDescription(task?.description ?? "");
-          setEditLabel(task?.label ?? "");
-          setEditStatus(task?.status ?? "PENDING");
-          fn.current.setEditingId(taskId);
-        }
+        applyTaskAction(action, taskId);
         gs.current.pendingAction = null;
         gs.current.pendingTaskId = null;
         return;
@@ -922,6 +939,7 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
+  const isViewingOwnSchedule = sessionUser !== null && authUserId === sessionUser.id;
 
   const handleResetInfiniteView = () => {
     const c = scrollRef.current;
@@ -1111,6 +1129,8 @@ export default function SchedulePage() {
                 const isDraggingThis = draggingId    === task.id;
                 const isResizing     = resizingId    === task.id;
                 const isLongPressed  = longPressedId === task.id;
+                const isPending = task.status === "PENDING";
+                const isInProgress = task.status === "IN_PROGRESS";
                 const h = task.span * effSlotH;
 
                 return (
@@ -1135,10 +1155,24 @@ export default function SchedulePage() {
                     className={`absolute inset-0 ${task.color} flex flex-col p-1.5 transition-all duration-100
                       ${isDraggingThis ? "opacity-30 scale-[0.93]" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
-                      ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}`}
+                      ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
+                      ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
-                    <p className="text-white text-[10px] font-semibold leading-tight truncate">{task.title}</p>
+                    <div className="flex items-center gap-1">
+                      <p className="text-white text-[10px] font-semibold leading-tight truncate flex-1">{task.title}</p>
+                      {isViewingOwnSchedule && isInProgress && (
+                        <button
+                          type="button"
+                          data-action="complete"
+                          data-task-id={task.id}
+                          onClick={() => applyTaskAction("complete", task.id)}
+                          className="h-3.5 w-3.5 shrink-0 rounded-sm border border-white/80 bg-white/10"
+                          title="Đánh dấu hoàn thành"
+                          aria-label="Đánh dấu hoàn thành"
+                        />
+                      )}
+                    </div>
                     {task.label && <p className="text-white/70 text-[9px] truncate">#{task.label}</p>}
                     <p className="text-white/70 text-[9px] truncate">{STATUS_LABEL[task.status]}</p>
                     <p className="text-white/50 text-[9px] tabular-nums">{slotLabel(task.slotIndex)}</p>
@@ -1147,6 +1181,22 @@ export default function SchedulePage() {
                     )}
                     {task.assignedFromName && (
                       <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
+                    )}
+
+                    {isPending && (
+                      isViewingOwnSchedule ? (
+                        <button
+                          type="button"
+                          data-action="accept"
+                          data-task-id={task.id}
+                          onClick={() => applyTaskAction("accept", task.id)}
+                          className="mt-1 w-fit rounded-md border border-white/45 px-1.5 py-0.5 text-[9px] font-medium text-white/90"
+                        >
+                          Nhận
+                        </button>
+                      ) : (
+                        <p className="mt-1 text-[9px] text-white/60">Đang chờ</p>
+                      )
                     )}
 
                     {/* Edit / Remove buttons in resize mode */}
