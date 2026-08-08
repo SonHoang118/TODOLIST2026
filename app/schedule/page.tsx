@@ -697,6 +697,9 @@ export default function SchedulePage() {
             const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
               ? actorUser.name
               : null;
+            const initialStatus: TaskStatus = actorUser && authUserIdRef.current === actorUser.id
+              ? "IN_PROGRESS"
+              : "PENDING";
 
             fn.current.setTasks(prev => [...prev, {
               id,
@@ -707,7 +710,7 @@ export default function SchedulePage() {
               span: 2,
               color,
               label: "",
-              status: "PENDING",
+              status: initialStatus,
               assignedFromName,
             }]);
             const colDate = absDayToDate(viewStartAbsDayRef.current + day);
@@ -1165,7 +1168,7 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
-                const subtitleText = task.label ? `#${task.label}` : STATUS_LABEL[task.status];
+                const subtitleText = task.label ? `#${task.label}` : "";
                 const h = task.span * effSlotH;
 
                 return (
@@ -1211,7 +1214,7 @@ export default function SchedulePage() {
 
                     <div className="flex items-start gap-1 pl-6">
                       <p
-                        className={`text-[10px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
+                        className={`text-[11px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1222,17 +1225,32 @@ export default function SchedulePage() {
                         {task.title}
                       </p>
                     </div>
-                    <p
-                      className="text-white/75 text-[9px]"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {subtitleText}
-                    </p>
+                    {task.description.trim() && (
+                      <p
+                        className="text-white/80 text-[9px]"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {task.description}
+                      </p>
+                    )}
+                    {subtitleText && (
+                      <p
+                        className="text-white/75 text-[9px]"
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {subtitleText}
+                      </p>
+                    )}
                     {task.assignedFromName && (
                       <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
                     )}
