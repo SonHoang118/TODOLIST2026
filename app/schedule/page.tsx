@@ -1358,7 +1358,7 @@ export default function SchedulePage() {
                       borderRadius: 8,
                       zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
                       transition: gs.current.isResizeDragging ? "none" : "height 0.15s ease",
-                    touchAction: "none", // let our handlers capture this, not native scroll
+                      touchAction: "pan-x pan-y", // allow scrolling even when touch starts on a task
                   }}
                 >
                   {/* Task body */}
