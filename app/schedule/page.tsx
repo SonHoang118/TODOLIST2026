@@ -717,8 +717,8 @@ export default function SchedulePage() {
               status: initialStatus,
               assignedFromName,
             }]);
-            const colDate = absDayToDate(viewStartAbsDayRef.current + day);
-            fn.current.setBadge(`${dayShortOf(colDate)} ${slotLabel(slot)}`);
+            fn.current.setResizingId(id);
+            fn.current.setBadge("Kéo thanh để điều chỉnh thời lượng");
           }
         }
       }
