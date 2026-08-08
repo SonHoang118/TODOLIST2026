@@ -511,30 +511,32 @@ export default function SchedulePage() {
           )}
         </div>
 
-        <button
-          onClick={() => setWeekOffset(w => w + 1)}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
-        >›</button>
-
-        {weekOffset !== 0 && (
+        <div className="flex items-center gap-1 shrink-0">
           <button
-            onClick={() => setWeekOffset(0)}
-            className="text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
-          >
-            Hôm nay
-          </button>
-        )}
+            onClick={() => setWeekOffset(w => w + 1)}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
+          >›</button>
 
-        <button
-          onClick={() => setSettingsOpen(true)}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext} shrink-0`}
-          aria-label="Cài đặt"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
+          {weekOffset !== 0 && (
+            <button
+              onClick={() => setWeekOffset(0)}
+              className="hidden min-[360px]:inline-flex text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
+            >
+              Hôm nay
+            </button>
+          )}
+
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext} shrink-0`}
+            aria-label="Cài đặt"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* ── Main scrollable area ─────────────────────────────────────────── */}
@@ -722,10 +724,12 @@ export default function SchedulePage() {
       )}
 
       {/* ── Settings sidebar ─────────────────────────────────────────────── */}
-      {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSettingsOpen(false)} />
-          <div className={`relative w-72 h-full ${th.root} flex flex-col border-l ${th.border} shadow-2xl`}>
+      <div className={`fixed inset-0 z-50 flex justify-end transition-opacity duration-200 ${settingsOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}>
+        <div
+          className={`absolute inset-0 transition-opacity duration-200 ${settingsOpen ? "bg-black/40" : "bg-black/0"}`}
+          onClick={() => setSettingsOpen(false)}
+        />
+        <div className={`relative w-72 max-w-[88vw] h-full ${th.root} flex flex-col border-l ${th.border} shadow-2xl transform transition-transform duration-300 ease-out ${settingsOpen ? "translate-x-0" : "translate-x-full"}`}>
             <div className={`flex items-center justify-between px-4 py-4 border-b ${th.border} shrink-0`}>
               <h2 className="font-semibold text-base">Cài đặt</h2>
               <button onClick={() => setSettingsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`}>✕</button>
@@ -762,8 +766,7 @@ export default function SchedulePage() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+      </div>
 
       {/* ── Edit modal ───────────────────────────────────────────────────── */}
       {editingId !== null && (() => {
