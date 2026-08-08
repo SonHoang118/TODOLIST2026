@@ -487,6 +487,8 @@ export default function SchedulePage() {
       // ── Action buttons (edit/remove) — no preventDefault so tap fires ─────
       const actionEl = el?.closest<HTMLElement>("[data-action]");
       if (actionEl) {
+        // Prevent synthetic click after touch to avoid double-toggle on mobile.
+        e.preventDefault();
         gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete";
         gs.current.pendingTaskId  = Number(actionEl.dataset.taskId);
         return;
@@ -1174,23 +1176,24 @@ export default function SchedulePage() {
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
-                    <div className="flex items-center gap-1">
+                    {isViewingOwnSchedule && (isInProgress || isDone) && (
+                      <button
+                        type="button"
+                        data-action="complete"
+                        data-task-id={task.id}
+                        onClick={() => applyTaskAction("complete", task.id)}
+                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                        aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                      >
+                        {isDone && <span className="text-[11px] leading-none text-emerald-200">✓</span>}
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-1 pl-6">
                       <p className={`text-[10px] font-semibold leading-tight truncate flex-1 text-white ${isDone ? "line-through" : ""}`}>
                         {task.title}
                       </p>
-                      {isViewingOwnSchedule && (isInProgress || isDone) && (
-                        <button
-                          type="button"
-                          data-action="complete"
-                          data-task-id={task.id}
-                          onClick={() => applyTaskAction("complete", task.id)}
-                          className={`h-3.5 w-3.5 shrink-0 rounded-sm border flex items-center justify-center ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/80 bg-white/10"}`}
-                          title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
-                          aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
-                        >
-                          {isDone && <span className="text-[10px] leading-none text-emerald-200">✓</span>}
-                        </button>
-                      )}
                     </div>
                     {task.label && <p className="text-white/70 text-[9px] truncate">#{task.label}</p>}
                     <p className="text-white/70 text-[9px] truncate">{STATUS_LABEL[task.status]}</p>
