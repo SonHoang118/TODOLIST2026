@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useRef, useEffect, useLayoutEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -109,7 +109,6 @@ export default function SchedulePage() {
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
   const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
-  const [authPassword, setAuthPassword]   = useState("");
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
@@ -509,35 +508,11 @@ export default function SchedulePage() {
     }
   };
 
-  const handleSidebarLogin = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!authUserId) {
-      setAuthError("Vui lòng chọn tài khoản.");
-      return;
-    }
-
-    setAuthBusy(true);
-    setAuthError(null);
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: authUserId, password: authPassword }),
-      });
-      const data = (await response.json()) as { user?: SessionUser; error?: string };
-      if (!response.ok || !data.user) {
-        throw new Error(data.error ?? "Đăng nhập thất bại.");
-      }
-
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ id: data.user.id }));
-      setSessionUser(data.user);
-      setAuthPassword("");
-      setBadge(`Đang dùng: ${data.user.name}`);
-      await loadAuthUsers();
-    } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Đăng nhập thất bại.");
-    } finally {
-      setAuthBusy(false);
+  const handleViewUserChange = (nextUserId: number) => {
+    setAuthUserId(nextUserId);
+    const selected = usersForAuth.find((u) => u.id === nextUserId);
+    if (selected) {
+      setBadge(`Đang xem lịch của ${selected.name}`);
     }
   };
 
@@ -900,7 +875,6 @@ export default function SchedulePage() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold truncate">{sessionUser.name}</p>
                       <p className={`text-xs ${th.subtext}`}>{sessionUser.role} · ID {sessionUser.id}</p>
-                      <p className={`text-[11px] ${th.subtext}`}>Bấm avatar để thay ảnh</p>
                     </div>
                   </div>
                 ) : (
@@ -919,11 +893,11 @@ export default function SchedulePage() {
                 />
               </div>
 
-              <form onSubmit={handleSidebarLogin} className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
-                <p className="text-sm font-medium">Đổi tài khoản đăng nhập</p>
+              <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
+                <p className="text-sm font-medium">Xem lịch của</p>
                 <select
                   value={authUserId ?? ""}
-                  onChange={(e) => setAuthUserId(Number(e.target.value))}
+                  onChange={(e) => handleViewUserChange(Number(e.target.value))}
                   className={`h-9 rounded-lg ${th.inputBg} text-inherit px-2 text-sm outline-none`}
                   required
                 >
@@ -932,23 +906,29 @@ export default function SchedulePage() {
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu"
-                  className={`h-9 rounded-lg ${th.inputBg} text-inherit px-2 text-sm outline-none`}
-                  required
-                />
+
+                {authUserId !== null && (() => {
+                  const viewingUser = usersForAuth.find((u) => u.id === authUserId);
+                  if (!viewingUser) return null;
+                  return (
+                    <div className="mt-1 flex items-center gap-2.5 rounded-lg border border-zinc-700 px-2.5 py-2">
+                      {viewingUser.avatar ? (
+                        <img src={viewingUser.avatar} alt={viewingUser.name} className="h-9 w-9 rounded-md object-cover" />
+                      ) : (
+                        <div className="h-9 w-9 rounded-md bg-zinc-700 flex items-center justify-center text-xs font-semibold">
+                          {viewingUser.name.trim().charAt(0).toUpperCase() || "U"}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{viewingUser.name}</p>
+                        <p className={`text-xs ${th.subtext}`}>{viewingUser.role} · ID {viewingUser.id}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {authError && <p className="text-[11px] text-rose-400">{authError}</p>}
-                <button
-                  type="submit"
-                  disabled={authBusy}
-                  className="h-9 rounded-lg bg-violet-600 text-white text-sm font-semibold disabled:opacity-60"
-                >
-                  {authBusy ? "Đang xử lý..." : "Đăng nhập"}
-                </button>
-              </form>
+              </div>
 
               {/* Dark / Light toggle */}
               <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
