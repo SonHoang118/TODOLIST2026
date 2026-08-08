@@ -425,8 +425,13 @@ export default function SchedulePage() {
       return;
     }
 
-    fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "DONE" } : t));
-    fn.current.setBadge("Đã hoàn thành");
+    let nextStatus: TaskStatus = "DONE";
+    fn.current.setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      nextStatus = t.status === "DONE" ? "IN_PROGRESS" : "DONE";
+      return { ...t, status: nextStatus };
+    }));
+    fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đang làm lại");
   };
 
   // Convert screen coords to { dayIndex, slotIndex } within the current scroll position
@@ -1139,6 +1144,7 @@ export default function SchedulePage() {
                 const isLongPressed  = longPressedId === task.id;
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
+                const isDone = task.status === "DONE";
                 const h = task.span * effSlotH;
 
                 return (
@@ -1164,21 +1170,26 @@ export default function SchedulePage() {
                       ${isDraggingThis ? "opacity-30 scale-[0.93]" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
+                      ${isDone ? "bg-emerald-700/80 border border-emerald-300/70" : ""}
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
                     <div className="flex items-center gap-1">
-                      <p className="text-white text-[10px] font-semibold leading-tight truncate flex-1">{task.title}</p>
-                      {isViewingOwnSchedule && isInProgress && (
+                      <p className={`text-[10px] font-semibold leading-tight truncate flex-1 text-white ${isDone ? "line-through" : ""}`}>
+                        {task.title}
+                      </p>
+                      {isViewingOwnSchedule && (isInProgress || isDone) && (
                         <button
                           type="button"
                           data-action="complete"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("complete", task.id)}
-                          className="h-3.5 w-3.5 shrink-0 rounded-sm border border-white/80 bg-white/10"
-                          title="Đánh dấu hoàn thành"
-                          aria-label="Đánh dấu hoàn thành"
-                        />
+                          className={`h-3.5 w-3.5 shrink-0 rounded-sm border flex items-center justify-center ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/80 bg-white/10"}`}
+                          title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                          aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                        >
+                          {isDone && <span className="text-[10px] leading-none text-emerald-200">✓</span>}
+                        </button>
                       )}
                     </div>
                     {task.label && <p className="text-white/70 text-[9px] truncate">#{task.label}</p>}
@@ -1383,6 +1394,8 @@ export default function SchedulePage() {
       {editingId !== null && (() => {
         const task = tasks.find(t => t.id === editingId);
         if (!task) return null;
+        const taskDate = absDayToDate(task.absDay);
+        const durationMinutes = task.span * 30;
         return (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -1392,72 +1405,66 @@ export default function SchedulePage() {
               className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs`}
               onClick={e => e.stopPropagation()}
             >
-              <p className="text-xs text-zinc-400 mb-2">Tên công việc</p>
-              <input
-                autoFocus
-                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
-                value={editTitle}
-                onChange={e => setEditTitle(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") {
-                    setTasks(prev => prev.map(t => t.id === editingId ? {
-                      ...t,
-                      title: editTitle.trim() || t.title,
-                      description: editDescription,
-                      label: editLabel,
-                      status: editStatus,
-                    } : t));
-                    setEditingId(null);
-                  }
-                  if (e.key === "Escape") setEditingId(null);
-                }}
-              />
-              <p className="text-xs text-zinc-400 mt-2 mb-1">Mô tả</p>
-              <textarea
-                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60 min-h-20`}
-                value={editDescription}
-                onChange={e => setEditDescription(e.target.value)}
-              />
+              <h3 className="text-base font-semibold">Chi tiết công việc</h3>
+              <div className={`mt-3 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className="text-[11px] text-zinc-400">Tên công việc</p>
+                <p className="mt-0.5 text-sm font-medium wrap-break-word">{task.title}</p>
+              </div>
+
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className="text-[11px] text-zinc-400">Mô tả</p>
+                <p className="mt-0.5 text-sm whitespace-pre-wrap wrap-break-word">
+                  {task.description.trim() ? task.description : "Chưa có mô tả"}
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
-                  <input
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
-                    value={editLabel}
-                    onChange={e => setEditLabel(e.target.value)}
-                  />
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className="text-[11px] text-zinc-400">Mã task</p>
+                  <p className="mt-0.5 text-sm">#{task.id}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
-                  <select
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
-                    value={editStatus}
-                    onChange={e => setEditStatus(e.target.value as TaskStatus)}
-                  >
-                    <option value="PENDING">{STATUS_LABEL.PENDING}</option>
-                    <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
-                    <option value="DONE">{STATUS_LABEL.DONE}</option>
-                  </select>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className="text-[11px] text-zinc-400">Nhãn</p>
+                  <p className="mt-0.5 text-sm wrap-break-word">{task.label.trim() ? `#${task.label}` : "Không có"}</p>
+                </div>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className="text-[11px] text-zinc-400">Trạng thái</p>
+                  <p className="mt-0.5 text-sm">{STATUS_LABEL[task.status]}</p>
+                </div>
+                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className="text-[11px] text-zinc-400">Màu</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`h-3 w-3 rounded-full ${task.color}`} />
+                    <span className="text-xs text-zinc-400 wrap-break-word">{task.color}</span>
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-2 mt-3">
+
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className="text-[11px] text-zinc-400">Ngày</p>
+                <p className="mt-0.5 text-sm">
+                  {dayShortOf(taskDate)}, {taskDate.toLocaleDateString("vi-VN")}
+                </p>
+              </div>
+
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className="text-[11px] text-zinc-400">Thời gian</p>
+                <p className="mt-0.5 text-sm tabular-nums">
+                  {slotLabel(task.slotIndex)} - {slotLabel(task.slotIndex + task.span)}
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-400">{durationMinutes} phút</p>
+              </div>
+
+              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                <p className="text-[11px] text-zinc-400">Được giao từ</p>
+                <p className="mt-0.5 text-sm wrap-break-word">{task.assignedFromName ?? "Tự tạo"}</p>
+              </div>
+
+              <div className="flex mt-3">
                 <button
                   onClick={() => setEditingId(null)}
-                  className={`flex-1 py-2.5 rounded-xl ${th.btnSecondary} text-xs`}
-                >Huỷ</button>
-                <button
-                  onClick={() => {
-                    setTasks(prev => prev.map(t => t.id === editingId ? {
-                      ...t,
-                      title: editTitle.trim() || t.title,
-                      description: editDescription,
-                      label: editLabel,
-                      status: editStatus,
-                    } : t));
-                    setEditingId(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"
-                >Lưu</button>
+                  className="w-full py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"
+                >Đóng</button>
               </div>
             </div>
           </div>
