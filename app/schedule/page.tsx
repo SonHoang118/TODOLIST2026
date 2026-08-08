@@ -24,7 +24,8 @@ const COLORS = [
   "bg-pink-600",   "bg-cyan-600",    "bg-lime-600",   "bg-fuchsia-600",
 ];
 
-const DEFAULT_TASK_BG = "bg-zinc-700";
+const DEFAULT_TASK_BG = "__DEFAULT_TASK_BG__";
+const LEGACY_DEFAULT_TASK_BG = "bg-zinc-700";
 
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
@@ -264,6 +265,19 @@ function apiTaskToLocalTask(apiTask: ApiTask): Task {
     status: apiTask.status,
     assignedFromName: apiTask.assignedFromName,
   };
+}
+
+function resolveTaskBgClass(taskColor: string, isDark: boolean): string {
+  if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) {
+    return isDark ? "bg-sky-700/80" : "bg-sky-500/85";
+  }
+  return taskColor;
+}
+
+function doneTaskBgClass(isDark: boolean): string {
+  return isDark
+    ? "bg-zinc-600/70 border border-zinc-400/60"
+    : "bg-zinc-500/65 border border-zinc-300/80";
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -980,6 +994,7 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
+  const draggingTaskBgClass = draggingTask ? resolveTaskBgClass(draggingTask.color, isDark) : "";
   const isViewingOwnSchedule = sessionUser !== null && authUserId === sessionUser.id;
 
   const handleResetInfiniteView = () => {
@@ -1172,6 +1187,7 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
+                const taskBgClass = resolveTaskBgClass(task.color, isDark);
                 const subtitleText = task.label ? `#${task.label}` : "";
                 const h = task.span * effSlotH;
 
@@ -1194,11 +1210,11 @@ export default function SchedulePage() {
                 >
                   {/* Task body */}
                   <div
-                    className={`absolute inset-0 ${task.color} flex flex-col p-1.5 transition-all duration-100
+                    className={`absolute inset-0 ${taskBgClass} flex flex-col p-1.5 transition-all duration-100
                       ${isDraggingThis ? "opacity-30 scale-[0.93]" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
-                      ${isDone ? `${DEFAULT_TASK_BG} border border-zinc-300/70` : ""}
+                      ${isDone ? doneTaskBgClass(isDark) : ""}
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
@@ -1311,7 +1327,7 @@ export default function SchedulePage() {
       {/* ── Drag ghost ───────────────────────────────────────────────────── */}
       {draggingTask && (
         <div
-          className={`fixed pointer-events-none rounded-lg ${draggingTask.color} flex flex-col p-1.5 shadow-2xl z-50`}
+          className={`fixed pointer-events-none rounded-lg ${draggingTaskBgClass} flex flex-col p-1.5 shadow-2xl z-50`}
           style={{
             left:      dragPos.x - (dayWidth - 4) / 2,
             top:       dragPos.y - draggingTask.span * effSlotH / 2,
@@ -1476,6 +1492,7 @@ export default function SchedulePage() {
       {reviewTaskId !== null && (() => {
         const task = tasks.find(t => t.id === reviewTaskId);
         if (!task) return null;
+        const reviewTaskBgClass = resolveTaskBgClass(task.color, isDark);
         const taskDate = absDayToDate(task.absDay);
         const durationMinutes = task.span * 30;
         return (
@@ -1484,7 +1501,7 @@ export default function SchedulePage() {
             onClick={() => setEditingId(null)}
           >
             <div
-              className={`${task.color} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border border-white/30`}
+              className={`${reviewTaskBgClass} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border border-white/30`}
               onClick={e => e.stopPropagation()}
             >
               <h3 className="text-base font-semibold text-white">Chi tiết công việc</h3>
