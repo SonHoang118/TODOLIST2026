@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useLayoutEffect } from "react";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SLOT_H    = 32;   // px per 30-min slot
-const DAY_W     = 88;   // px per day column
+const DAY_W     = 100;  // px per day column
 const TIME_W    = 44;   // px for the time-label column
 const HEADER_H  = 52;   // px for the day-header row
 const SLOTS     = 48;   // 00:00 → 23:30
@@ -14,8 +14,9 @@ const DAYS      = 7;
 const LONG_PRESS_MS = 350;
 const DRAG_DELTA    = 8;
 const HANDLE_H      = 14;
-const DAY_W_MIN     = 64;
+const DAY_W_MIN     = 60;
 const DAY_W_MAX     = 140;
+const DAY_W_STEP    = 20;
 
 const COLORS = [
   "bg-violet-600", "bg-emerald-600", "bg-amber-500",  "bg-sky-600",
@@ -1453,11 +1454,19 @@ export default function SchedulePage() {
                   type="range"
                   min={DAY_W_MIN}
                   max={DAY_W_MAX}
-                  step={2}
+                  step={DAY_W_STEP}
                   value={dayWidth}
                   onChange={(e) => setDayWidth(Number(e.target.value))}
+                  list="day-width-marks"
                   className="mt-2 w-full accent-violet-500"
                 />
+                <datalist id="day-width-marks">
+                  <option value="60" label="60" />
+                  <option value="80" label="80" />
+                  <option value="100" label="100" />
+                  <option value="120" label="120" />
+                  <option value="140" label="140" />
+                </datalist>
               </div>
             </div>
           </div>
