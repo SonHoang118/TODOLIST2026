@@ -473,8 +473,10 @@ export default function SchedulePage() {
     if (!infiniteScroll) return;
     const c = scrollRef.current;
     if (!c) return;
-    c.scrollLeft = INF_CENTER * DAY_W;
-    c.scrollTop = currentTimeScrollTop(effSlotHRef.current);
+    c.scrollTo({
+      left: INF_CENTER * DAY_W,
+      top: currentTimeScrollTop(effSlotHRef.current),
+    });
   }, [infiniteScroll]);
 
   // Week data — kept for week-mode header
@@ -488,8 +490,12 @@ export default function SchedulePage() {
   const handleResetInfiniteView = () => {
     const c = scrollRef.current;
     if (!c) return;
-    c.scrollLeft = INF_CENTER * DAY_W;
-    c.scrollTop = currentTimeScrollTop(effSlotHRef.current);
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    c.scrollTo({
+      left: INF_CENTER * DAY_W,
+      top: currentTimeScrollTop(effSlotHRef.current),
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
     setBadge("Đã reset về hôm nay");
   };
 

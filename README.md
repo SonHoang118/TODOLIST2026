@@ -34,3 +34,46 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Neon user storage
+
+Set environment variable:
+
+```bash
+cp .env.example .env.local
+```
+
+Then update `DATABASE_URL` in `.env.local` with your Neon connection string.
+
+Also configure Cloudinary for avatar upload:
+
+```bash
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
+NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=your-unsigned-upload-preset
+```
+
+Default seeded account on first run:
+
+- Name: Ngô Thế Hiếu
+- Role: ADMIN
+- Avatar: empty
+- Password: 123456
+
+### API
+
+- `POST /api/users`
+- `GET /api/users`
+- `POST /api/auth/login`
+
+Create user example:
+
+```bash
+curl -X POST http://localhost:3000/api/users \
+	-H "Content-Type: application/json" \
+	-d '{
+		"role": "ADMIN",
+		"name": "Hoang Son",
+		"avatar": "https://example.com/avatar.png",
+		"password": "123456"
+	}'
+```
