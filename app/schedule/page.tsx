@@ -65,6 +65,11 @@ function isSameDay(a: Date, b: Date) {
   return a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
 }
 
+function currentTimeScrollTop(slotH: number) {
+  const now = new Date();
+  return Math.max(0, (now.getHours() * 2 - 3) * slotH);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Task {
@@ -468,7 +473,8 @@ export default function SchedulePage() {
     if (!infiniteScroll) return;
     const c = scrollRef.current;
     if (!c) return;
-    c.scrollLeft = Math.max(0, INF_CENTER * DAY_W - c.clientWidth / 2);
+    c.scrollLeft = INF_CENTER * DAY_W;
+    c.scrollTop = currentTimeScrollTop(effSlotHRef.current);
   }, [infiniteScroll]);
 
   // Week data — kept for week-mode header
@@ -478,6 +484,14 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
+
+  const handleResetInfiniteView = () => {
+    const c = scrollRef.current;
+    if (!c) return;
+    c.scrollLeft = INF_CENTER * DAY_W;
+    c.scrollTop = currentTimeScrollTop(effSlotHRef.current);
+    setBadge("Đã reset về hôm nay");
+  };
 
   // Reset tasks when toggling scroll mode to avoid column-index confusion
   const handleToggleInfiniteScroll = () => {
@@ -491,14 +505,18 @@ export default function SchedulePage() {
 
       {/* ── App header ───────────────────────────────────────────────────── */}
       <header className={`relative flex items-center gap-1 px-3 py-2 pr-12 ${th.hdrBg} border-b ${th.border} shrink-0`}>
-        <button
-          onClick={() => setWeekOffset(w => w - 1)}
-          className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
-        >‹</button>
+        {infiniteScroll ? (
+          <div className="w-8 h-8 shrink-0" />
+        ) : (
+          <button
+            onClick={() => setWeekOffset(w => w - 1)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg"
+          >‹</button>
+        )}
 
         <div className="flex-1 text-center min-w-0">
           <p className="text-xs font-semibold text-zinc-300 truncate">
-            {infiniteScroll ? "Lịch liên tục" : (
+            {infiniteScroll ? today.toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "numeric", year: "numeric" }) : (
               <>
                 {weekDates[0]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })}
                 {" – "}
@@ -512,18 +530,29 @@ export default function SchedulePage() {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => setWeekOffset(w => w + 1)}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg ${infiniteScroll ? "opacity-30 pointer-events-none" : ""}`}
-          >›</button>
-
-          {weekOffset !== 0 && (
+          {infiniteScroll ? (
             <button
-              onClick={() => setWeekOffset(0)}
-              className="hidden min-[360px]:inline-flex text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
+              onClick={handleResetInfiniteView}
+              className="text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
             >
-              Hôm nay
+              Reset view
             </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setWeekOffset(w => w + 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg"
+              >›</button>
+
+              {weekOffset !== 0 && (
+                <button
+                  onClick={() => setWeekOffset(0)}
+                  className="hidden min-[360px]:inline-flex text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
+                >
+                  Hôm nay
+                </button>
+              )}
+            </>
           )}
 
         </div>
