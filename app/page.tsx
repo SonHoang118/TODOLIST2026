@@ -273,6 +273,15 @@ export default function Home() {
               >
                 <h3 className="text-base font-semibold">Tạo user mới</h3>
 
+                <div className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-950/60 px-3 py-2">
+                  <Avatar user={currentUser} />
+                  <div>
+                    <p className="text-xs text-zinc-400">Đang dùng tài khoản để tạo user</p>
+                    <p className="text-sm font-semibold text-zinc-100">{currentUser.name}</p>
+                    <p className="text-xs text-zinc-400">{currentUser.role} · ID {currentUser.id}</p>
+                  </div>
+                </div>
+
                 <label className="grid gap-1 text-sm">
                   <span className="text-zinc-300">Role</span>
                   <select
