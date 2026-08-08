@@ -372,8 +372,77 @@ function colorToPickerHex(taskColor: string): string {
 
 function doneTaskBgClass(isDark: boolean): string {
   return isDark
-    ? "border border-zinc-300/60 brightness-90"
-    : "border border-zinc-500/50 brightness-95";
+    ? "bg-zinc-500/30 border border-zinc-300/60 brightness-90"
+    : "bg-zinc-400/35 border border-zinc-500/50 brightness-95";
+}
+
+type RgbColor = { r: number; g: number; b: number };
+
+const TIME_GRADIENT_ANCHORS: Array<{ minute: number; color: string }> = [
+  { minute: 0, color: "#020617" },
+  { minute: 120, color: "#1E293B" },
+  { minute: 240, color: "#0F172A" },
+  { minute: 270, color: "#334155" },
+  { minute: 300, color: "#748CAB" },
+  { minute: 360, color: "#E4C1F9" },
+  { minute: 390, color: "#FBC4AB" },
+  { minute: 420, color: "#FFDDBB" },
+  { minute: 480, color: "#A0C4FF" },
+  { minute: 570, color: "#4EA8DE" },
+  { minute: 660, color: "#0077B6" },
+  { minute: 720, color: "#FFFFFF" },
+  { minute: 990, color: "#FFB703" },
+  { minute: 1020, color: "#FB8500" },
+  { minute: 1050, color: "#D00000" },
+  { minute: 1080, color: "#6A0DAD" },
+  { minute: 1110, color: "#1D3557" },
+  { minute: 1140, color: "#0F172A" },
+  { minute: 1320, color: "#020617" },
+  { minute: 1410, color: "#1E293B" },
+];
+
+function hexToRgb(hex: string): RgbColor {
+  const clean = hex.replace("#", "");
+  return {
+    r: Number.parseInt(clean.slice(0, 2), 16),
+    g: Number.parseInt(clean.slice(2, 4), 16),
+    b: Number.parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+function lerpColor(a: RgbColor, b: RgbColor, t: number): RgbColor {
+  return {
+    r: Math.round(a.r + (b.r - a.r) * t),
+    g: Math.round(a.g + (b.g - a.g) * t),
+    b: Math.round(a.b + (b.b - a.b) * t),
+  };
+}
+
+function slotGradientColor(slot: number, isDark: boolean): string {
+  const minute = slot * 30;
+  const anchors = TIME_GRADIENT_ANCHORS;
+  const first = anchors[0];
+  const last = anchors[anchors.length - 1];
+
+  if (!first || !last) return isDark ? "rgba(15, 23, 42, 0.35)" : "rgba(203, 213, 225, 0.35)";
+
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const start = anchors[i];
+    const end = anchors[i + 1];
+    if (minute >= start.minute && minute <= end.minute) {
+      const range = end.minute - start.minute || 1;
+      const t = (minute - start.minute) / range;
+      const c = lerpColor(hexToRgb(start.color), hexToRgb(end.color), t);
+      const alpha = isDark ? 0.36 : 0.28;
+      return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+    }
+  }
+
+  const wrapRange = (first.minute + 1440) - last.minute;
+  const wrapT = wrapRange <= 0 ? 0 : (minute + 1440 - last.minute) / wrapRange;
+  const c = lerpColor(hexToRgb(last.color), hexToRgb(first.color), wrapT);
+  const alpha = isDark ? 0.36 : 0.28;
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -1217,10 +1286,13 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
-  const draggingTaskBgClass = draggingTask && !isHexColor(draggingTask.color)
+  const draggingTaskIsDone = draggingTask?.status === "DONE";
+  const draggingTaskBgClass = draggingTaskIsDone
+    ? doneTaskBgClass(isDark)
+    : draggingTask && !isHexColor(draggingTask.color)
     ? resolveTaskBgClass(draggingTask.color, isDark)
     : "";
-  const draggingTaskBgStyle = draggingTask && isHexColor(draggingTask.color)
+  const draggingTaskBgStyle = draggingTask && !draggingTaskIsDone && isHexColor(draggingTask.color)
     ? { backgroundColor: draggingTask.color }
     : undefined;
   const isViewingOwnSchedule = sessionUser !== null && authUserId === sessionUser.id;
@@ -1387,7 +1459,10 @@ export default function SchedulePage() {
                       key={day}
                       data-day={day}
                       data-slot={slot}
-                      style={{ width: dayWidth }}
+                      style={{
+                        width: dayWidth,
+                        backgroundColor: slotGradientColor(slot, isDark),
+                      }}
                       className={`shrink-0 border-l ${th.dayBorder} ${day === todayIdx ? th.todayCol : ""}`}
                     />
                   ))}
@@ -1415,8 +1490,14 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
-                const taskBgClass = isHexColor(task.color) ? "" : resolveTaskBgClass(task.color, isDark);
-                const taskBgStyle = isHexColor(task.color) ? { backgroundColor: task.color } : undefined;
+                const taskBgClass = isDone
+                  ? ""
+                  : isHexColor(task.color)
+                    ? ""
+                    : resolveTaskBgClass(task.color, isDark);
+                const taskBgStyle = !isDone && isHexColor(task.color)
+                  ? { backgroundColor: task.color }
+                  : undefined;
                 const subtitleLabel = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
                   ? TASK_LABEL_TEXT.PERSONAL
                   : "";
