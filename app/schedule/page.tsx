@@ -465,6 +465,7 @@ export default function SchedulePage() {
   const [zoomLevel, setZoomLevel]          = useState(1);
   const [dayWidth, setDayWidth]           = useState(DAY_W);
   const [isDark, setIsDark]               = useState(true);
+  const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(false);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
@@ -1437,8 +1438,8 @@ export default function SchedulePage() {
                 >
                   {slot % 2 === 0 && (
                     <span
-                      className="text-[9px] -mt-1 leading-none tabular-nums"
-                      style={{ color: slotGradientTextColor(slot, isDark) }}
+                      className={`text-[9px] -mt-1 leading-none tabular-nums ${isGradientTimeText ? "" : th.timeText}`}
+                      style={isGradientTimeText ? { color: slotGradientTextColor(slot, isDark) } : undefined}
                     >
                       {slotLabel(slot)}
                     </span>
@@ -1772,6 +1773,21 @@ export default function SchedulePage() {
                   className={`relative w-9 h-4 rounded-full transition-colors duration-200 ${isDark ? "bg-violet-600" : "bg-gray-300"}`}
                 >
                   <span className={`absolute left-0.5 top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200 ${isDark ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+
+              <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
+                <div>
+                  <p className="text-sm font-medium">Màu giờ gradient</p>
+                  <p className={`text-xs ${th.subtext} mt-0.5`}>
+                    {isGradientTimeText ? "Đang bật" : "Dùng màu mặc định"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsGradientTimeText((v) => !v)}
+                  className={`relative w-9 h-4 rounded-full transition-colors duration-200 ${isGradientTimeText ? "bg-violet-600" : "bg-gray-300"}`}
+                >
+                  <span className={`absolute left-0.5 top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200 ${isGradientTimeText ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
               </div>
 
