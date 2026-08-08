@@ -655,6 +655,7 @@ export default function SchedulePage() {
 
     const t = setTimeout(async () => {
       try {
+        setAuthError(null);
         const response = await fetch("/api/tasks", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -664,19 +665,15 @@ export default function SchedulePage() {
             tasks: tasks.map(taskToApiInput),
           }),
         });
-        const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
-        if (!response.ok || !Array.isArray(data.tasks)) {
+        const data = (await response.json()) as { error?: string };
+        if (!response.ok) {
           throw new Error(data.error ?? "Không thể lưu task.");
         }
-        isHydratingTasksRef.current = true;
-        setTasks(data.tasks.map(apiTaskToLocalTask));
-        window.setTimeout(() => {
-          isHydratingTasksRef.current = false;
-        }, 0);
+        setBadge("Đã tự lưu");
       } catch (error) {
         setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
       }
-    }, 450);
+    }, 15000);
 
     return () => clearTimeout(t);
   }, [tasks, authUserId, sessionUser]);
