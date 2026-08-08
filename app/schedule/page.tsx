@@ -75,10 +75,14 @@ function currentTimeScrollTop(slotH: number) {
 interface Task {
   id: number;
   title: string;
-  dayIndex: number;   // 0=Mon … 6=Sun
+  description: string;
+  absDay: number;
   slotIndex: number;  // 0=00:00 … 47=23:30
   span: number;       // 1=30min, 2=1hr, …
   color: string;
+  label: string;
+  status: "PENDING" | "IN_PROGRESS" | "DONE";
+  assignedFromName: string | null;
 }
 
 interface SessionUser {
@@ -88,7 +92,80 @@ interface SessionUser {
   avatar: string;
 }
 
+interface ApiTask {
+  id: number;
+  title: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  color: string;
+  label: string;
+  status: "PENDING" | "IN_PROGRESS" | "DONE";
+  assignedFromName: string | null;
+}
+
+type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  PENDING: "Đang chờ tiếp nhận",
+  IN_PROGRESS: "Đang làm",
+  DONE: "Đã hoàn thành",
+};
+
 const AUTH_STORAGE_KEY = "todo2026.currentUser";
+
+const SLOT_MS = 30 * 60 * 1000;
+
+function buildDateFromAbsDayAndSlot(absDay: number, slotIndex: number): Date {
+  const date = absDayToDate(absDay);
+  const hours = Math.floor(slotIndex / 2);
+  const minutes = slotIndex % 2 === 0 ? 0 : 30;
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
+
+function taskToApiInput(task: Task): {
+  title: string;
+  description: string;
+  startAt: string;
+  endAt: string;
+  color: string;
+  label: string;
+  status: TaskStatus;
+} {
+  const start = buildDateFromAbsDayAndSlot(task.absDay, task.slotIndex);
+  const end = new Date(start.getTime() + Math.max(1, task.span) * SLOT_MS);
+  return {
+    title: task.title,
+    description: task.description,
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+    color: task.color,
+    label: task.label,
+    status: task.status,
+  };
+}
+
+function apiTaskToLocalTask(apiTask: ApiTask): Task {
+  const start = new Date(apiTask.startAt);
+  const end = new Date(apiTask.endAt);
+  const absDay = dateToAbsDay(start);
+  const slotIndex = start.getHours() * 2 + (start.getMinutes() >= 30 ? 1 : 0);
+  const span = Math.max(1, Math.round((end.getTime() - start.getTime()) / SLOT_MS));
+
+  return {
+    id: apiTask.id,
+    title: apiTask.title,
+    description: apiTask.description,
+    absDay,
+    slotIndex,
+    span,
+    color: apiTask.color,
+    label: apiTask.label,
+    status: apiTask.status,
+    assignedFromName: apiTask.assignedFromName,
+  };
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -101,6 +178,9 @@ export default function SchedulePage() {
   const [resizingId, setResizingId]       = useState<number | null>(null);
   const [editingId, setEditingId]         = useState<number | null>(null);
   const [editTitle, setEditTitle]         = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editLabel, setEditLabel]         = useState("");
+  const [editStatus, setEditStatus]       = useState<TaskStatus>("PENDING");
   const [badge, setBadge]                 = useState<string | null>(null);
   const [zoomLevel, setZoomLevel]          = useState(1);
   const [isDark, setIsDark]               = useState(true);
@@ -112,6 +192,14 @@ export default function SchedulePage() {
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
+  const isHydratingTasksRef               = useRef(false);
+  const sessionUserRef                     = useRef<SessionUser | null>(null);
+  const usersForAuthRef                    = useRef<SessionUser[]>([]);
+  const authUserIdRef                      = useRef<number | null>(null);
+
+  sessionUserRef.current = sessionUser;
+  usersForAuthRef.current = usersForAuth;
+  authUserIdRef.current = authUserId;
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -399,6 +487,9 @@ export default function SchedulePage() {
         } else {
           const task = tasksRef.current.find(t => t.id === taskId);
           fn.current.setEditTitle(task?.title ?? "");
+          setEditDescription(task?.description ?? "");
+          setEditLabel(task?.label ?? "");
+          setEditStatus(task?.status ?? "PENDING");
           fn.current.setEditingId(taskId);
         }
         gs.current.pendingAction = null;
@@ -423,7 +514,9 @@ export default function SchedulePage() {
         const dest   = screenToSlot(t.clientX, t.clientY);
         if (dest) {
           fn.current.setTasks(prev => prev.map(task =>
-            task.id === taskId ? { ...task, dayIndex: dest.dayIndex, slotIndex: dest.slotIndex } : task
+            task.id === taskId
+              ? { ...task, absDay: viewStartAbsDayRef.current + dest.dayIndex, slotIndex: dest.slotIndex }
+              : task
           ));
           const destDate = absDayToDate(viewStartAbsDayRef.current + dest.dayIndex);
           fn.current.setBadge(`${dayShortOf(destDate)} ${slotLabel(dest.slotIndex)}`);
@@ -452,7 +545,24 @@ export default function SchedulePage() {
             const slot  = gs.current.touchedSlot;
             const id    = fn.current.nextId();
             const color = fn.current.nextColor();
-            fn.current.setTasks(prev => [...prev, { id, title: `Task ${id}`, dayIndex: day, slotIndex: slot, span: 2, color }]);
+            const ownerName = usersForAuthRef.current.find((u) => u.id === authUserIdRef.current)?.name ?? null;
+            const actorUser = sessionUserRef.current;
+            const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
+              ? actorUser.name
+              : null;
+
+            fn.current.setTasks(prev => [...prev, {
+              id,
+              title: `Task ${id}`,
+              description: "",
+              absDay: viewStartAbsDayRef.current + day,
+              slotIndex: slot,
+              span: 2,
+              color,
+              label: "",
+              status: "PENDING",
+              assignedFromName,
+            }]);
             const colDate = absDayToDate(viewStartAbsDayRef.current + day);
             fn.current.setBadge(`${dayShortOf(colDate)} ${slotLabel(slot)}`);
           }
@@ -508,6 +618,25 @@ export default function SchedulePage() {
     }
   };
 
+  const loadTasksForViewedUser = async (ownerUserId: number) => {
+    try {
+      isHydratingTasksRef.current = true;
+      const response = await fetch(`/api/tasks?ownerUserId=${ownerUserId}`, { cache: "no-store" });
+      const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
+      if (!response.ok || !Array.isArray(data.tasks)) {
+        throw new Error(data.error ?? "Không thể tải task.");
+      }
+      setTasks(data.tasks.map(apiTaskToLocalTask));
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Không thể tải task.");
+      setTasks([]);
+    } finally {
+      window.setTimeout(() => {
+        isHydratingTasksRef.current = false;
+      }, 0);
+    }
+  };
+
   const handleViewUserChange = (nextUserId: number) => {
     setAuthUserId(nextUserId);
     const selected = usersForAuth.find((u) => u.id === nextUserId);
@@ -515,6 +644,42 @@ export default function SchedulePage() {
       setBadge(`Đang xem lịch của ${selected.name}`);
     }
   };
+
+  useEffect(() => {
+    if (!authUserId) return;
+    void loadTasksForViewedUser(authUserId);
+  }, [authUserId]);
+
+  useEffect(() => {
+    if (!authUserId || !sessionUser || isHydratingTasksRef.current) return;
+
+    const t = setTimeout(async () => {
+      try {
+        const response = await fetch("/api/tasks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ownerUserId: authUserId,
+            actorUserId: sessionUser.id,
+            tasks: tasks.map(taskToApiInput),
+          }),
+        });
+        const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
+        if (!response.ok || !Array.isArray(data.tasks)) {
+          throw new Error(data.error ?? "Không thể lưu task.");
+        }
+        isHydratingTasksRef.current = true;
+        setTasks(data.tasks.map(apiTaskToLocalTask));
+        window.setTimeout(() => {
+          isHydratingTasksRef.current = false;
+        }, 0);
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
+      }
+    }, 450);
+
+    return () => clearTimeout(t);
+  }, [tasks, authUserId, sessionUser]);
 
   const handleAvatarPick = () => {
     if (!sessionUser) return;
@@ -753,7 +918,7 @@ export default function SchedulePage() {
 
               {/* Task blocks */}
               {tasks.map(task => {
-                const colIdx = task.dayIndex;
+                const colIdx = task.absDay - viewStartAbsDay;
                 if (colIdx < 0 || colIdx >= colCount) return null; // outside current view
                 const isDraggingThis = draggingId    === task.id;
                 const isResizing     = resizingId    === task.id;
@@ -786,9 +951,14 @@ export default function SchedulePage() {
                     style={{ borderRadius: 8 }}
                   >
                     <p className="text-white text-[10px] font-semibold leading-tight truncate">{task.title}</p>
+                    {task.label && <p className="text-white/70 text-[9px] truncate">#{task.label}</p>}
+                    <p className="text-white/70 text-[9px] truncate">{STATUS_LABEL[task.status]}</p>
                     <p className="text-white/50 text-[9px] tabular-nums">{slotLabel(task.slotIndex)}</p>
                     {task.span > 1 && (
                       <p className="text-white/40 text-[9px] tabular-nums">→ {slotLabel(task.slotIndex + task.span)}</p>
+                    )}
+                    {task.assignedFromName && (
+                      <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
                     )}
 
                     {/* Edit / Remove buttons in resize mode */}
@@ -984,12 +1154,46 @@ export default function SchedulePage() {
                 onChange={e => setEditTitle(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter") {
-                    setTasks(prev => prev.map(t => t.id === editingId ? { ...t, title: editTitle.trim() || t.title } : t));
+                    setTasks(prev => prev.map(t => t.id === editingId ? {
+                      ...t,
+                      title: editTitle.trim() || t.title,
+                      description: editDescription,
+                      label: editLabel,
+                      status: editStatus,
+                    } : t));
                     setEditingId(null);
                   }
                   if (e.key === "Escape") setEditingId(null);
                 }}
               />
+              <p className="text-xs text-zinc-400 mt-2 mb-1">Mô tả</p>
+              <textarea
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60 min-h-20`}
+                value={editDescription}
+                onChange={e => setEditDescription(e.target.value)}
+              />
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
+                  <input
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    value={editLabel}
+                    onChange={e => setEditLabel(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
+                  <select
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    value={editStatus}
+                    onChange={e => setEditStatus(e.target.value as TaskStatus)}
+                  >
+                    <option value="PENDING">{STATUS_LABEL.PENDING}</option>
+                    <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
+                    <option value="DONE">{STATUS_LABEL.DONE}</option>
+                  </select>
+                </div>
+              </div>
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setEditingId(null)}
@@ -997,7 +1201,13 @@ export default function SchedulePage() {
                 >Huỷ</button>
                 <button
                   onClick={() => {
-                    setTasks(prev => prev.map(t => t.id === editingId ? { ...t, title: editTitle.trim() || t.title } : t));
+                    setTasks(prev => prev.map(t => t.id === editingId ? {
+                      ...t,
+                      title: editTitle.trim() || t.title,
+                      description: editDescription,
+                      label: editLabel,
+                      status: editStatus,
+                    } : t));
                     setEditingId(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"
