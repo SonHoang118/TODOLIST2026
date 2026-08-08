@@ -1708,7 +1708,7 @@ export default function SchedulePage() {
               <div className={`mt-3 rounded-xl ${th.inputBg} px-3 py-2`}>
                 <p className={`text-[11px] ${th.subtext}`}>Tên công việc</p>
                 <input
-                  className="mt-1 w-full bg-transparent text-sm font-medium outline-none"
+                  className="mt-1 w-full bg-transparent text-[16px] font-medium outline-none"
                   value={task.title}
                   onChange={(e) => patchTask(task.id, { title: e.target.value })}
                   placeholder="Nhập tên công việc"
@@ -1718,7 +1718,7 @@ export default function SchedulePage() {
               <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
                 <p className={`text-[11px] ${th.subtext}`}>Mô tả</p>
                 <textarea
-                  className="mt-1 min-h-20 w-full resize-none bg-transparent text-sm outline-none"
+                  className="mt-1 min-h-20 w-full resize-none bg-transparent text-[16px] outline-none"
                   value={task.description}
                   onChange={(e) => patchTask(task.id, { description: e.target.value })}
                   placeholder="Nhập mô tả"
@@ -1729,7 +1729,7 @@ export default function SchedulePage() {
                 <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
                   <p className={`text-[11px] ${th.subtext}`}>Nhãn</p>
                   <select
-                    className="mt-1 w-full rounded-md bg-transparent text-sm italic outline-none"
+                    className="mt-1 w-full rounded-md bg-transparent text-[16px] italic outline-none"
                     value={normalizeTaskLabel(task.label)}
                     onChange={(e) => patchTask(task.id, { label: normalizeTaskLabel(e.target.value) })}
                   >
