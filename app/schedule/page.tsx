@@ -675,6 +675,11 @@ export default function SchedulePage() {
     const onMove = (e: TouchEvent) => {
       const t = e.touches[0];
 
+      // Once long-press is active on a task, stop native panning so drag gesture is exclusive.
+      if (gs.current.longPressFired && !gs.current.isResizeDragging && !gs.current.isPinching) {
+        e.preventDefault();
+      }
+
       if (!gs.current.isDragging && !gs.current.isResizeDragging && !gs.current.isPinching) {
         const dxScroll = Math.abs(container.scrollLeft - gs.current.startScrollLeft);
         const dyScroll = Math.abs(container.scrollTop - gs.current.startScrollTop);
