@@ -2,6 +2,7 @@ import { getSql } from "@/lib/neon";
 
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 export type TaskLabel = "DEFAULT" | "PERSONAL";
+export type TaskScope = "USER" | "COMPANY";
 
 export interface TaskInput {
   title: string;
@@ -11,18 +12,31 @@ export interface TaskInput {
   color: string;
   label: TaskLabel;
   status: TaskStatus;
+  assignedFromUserId?: number | null;
+  createdByUserId?: number | null;
+  updatedByUserId?: number | null;
+  confirmedByUserIds?: number[];
 }
 
 export interface TaskRecord extends TaskInput {
   id: number;
+  scope: TaskScope;
   ownerUserId: number;
   assignedFromUserId: number | null;
   assignedFromName: string | null;
+  createdByUserId: number | null;
+  createdByName: string | null;
+  createdByAvatar: string | null;
+  updatedByUserId: number | null;
+  updatedByName: string | null;
+  updatedByAvatar: string | null;
+  confirmedByUserIds: number[];
   createdAt: string;
 }
 
 type DbTaskRow = {
   id: number;
+  schedule_scope: TaskScope;
   owner_user_id: number;
   title: string;
   description: string;
@@ -33,8 +47,21 @@ type DbTaskRow = {
   status: TaskStatus;
   assigned_from_user_id: number | null;
   assigned_from_name: string | null;
+  created_by_user_id: number | null;
+  created_by_name: string | null;
+  created_by_avatar: string | null;
+  updated_by_user_id: number | null;
+  updated_by_name: string | null;
+  updated_by_avatar: string | null;
+  confirmed_by_user_ids: number[];
   created_at: string;
 };
+
+export interface TaskScopeInput {
+  scope: TaskScope;
+  ownerUserId?: number;
+  actorUserId: number;
+}
 
 const VALID_STATUS = new Set<TaskStatus>(["PENDING", "IN_PROGRESS", "DONE"]);
 const DEFAULT_LABEL: TaskLabel = "DEFAULT";
@@ -56,7 +83,8 @@ export async function ensureTasksTable(): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS schedule_tasks (
       id BIGSERIAL PRIMARY KEY,
-      owner_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      schedule_scope VARCHAR(20) NOT NULL DEFAULT 'USER' CHECK (schedule_scope IN ('USER', 'COMPANY')),
+      owner_user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       start_at TIMESTAMPTZ NOT NULL,
@@ -65,56 +93,126 @@ export async function ensureTasksTable(): Promise<void> {
       label TEXT NOT NULL DEFAULT '',
       status VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'IN_PROGRESS', 'DONE')),
       assigned_from_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      created_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      updated_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      confirmed_by_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  await sql`ALTER TABLE schedule_tasks DROP CONSTRAINT IF EXISTS schedule_tasks_owner_required`;
+  await sql`ALTER TABLE schedule_tasks ALTER COLUMN owner_user_id DROP NOT NULL`;
+  await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS schedule_scope VARCHAR(20) NOT NULL DEFAULT 'USER'`;
+  await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL`;
+  await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS updated_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL`;
+  await sql`ALTER TABLE schedule_tasks ADD COLUMN IF NOT EXISTS confirmed_by_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`
+    ALTER TABLE schedule_tasks
+    ADD CONSTRAINT schedule_tasks_owner_required
+    CHECK (
+      (schedule_scope = 'COMPANY' AND owner_user_id IS NULL)
+      OR (schedule_scope = 'USER' AND owner_user_id IS NOT NULL)
     )
   `;
 }
 
-export async function listTasksByOwner(ownerUserId: number, actorUserId?: number): Promise<TaskRecord[]> {
+export async function listTasksByScope(params: TaskScopeInput): Promise<TaskRecord[]> {
   const sql = getSql();
-  const rows = await sql`
-    SELECT
-      t.id,
-      t.owner_user_id,
-      t.title,
-      t.description,
-      t.start_at,
-      t.end_at,
-      t.bg_color,
-      t.label,
-      t.status,
-      t.assigned_from_user_id,
-      u.name AS assigned_from_name,
-      t.created_at
-    FROM schedule_tasks t
-    LEFT JOIN users u ON u.id = t.assigned_from_user_id
-    WHERE t.owner_user_id = ${ownerUserId}
-      AND (${actorUserId ?? ownerUserId} = ${ownerUserId} OR UPPER(t.label) <> 'PERSONAL')
-    ORDER BY t.start_at ASC
-  `;
+  const rows = params.scope === "COMPANY"
+    ? await sql`
+        SELECT
+          t.id,
+          t.schedule_scope,
+          COALESCE(t.owner_user_id, 0) AS owner_user_id,
+          t.title,
+          t.description,
+          t.start_at,
+          t.end_at,
+          t.bg_color,
+          t.label,
+          t.status,
+          t.assigned_from_user_id,
+          assignee.name AS assigned_from_name,
+          t.created_by_user_id,
+          creator.name AS created_by_name,
+          creator.avatar AS created_by_avatar,
+          t.updated_by_user_id,
+          editor.name AS updated_by_name,
+          editor.avatar AS updated_by_avatar,
+          t.confirmed_by_user_ids,
+          t.created_at
+        FROM schedule_tasks t
+        LEFT JOIN users assignee ON assignee.id = t.assigned_from_user_id
+        LEFT JOIN users creator ON creator.id = t.created_by_user_id
+        LEFT JOIN users editor ON editor.id = t.updated_by_user_id
+        WHERE t.schedule_scope = 'COMPANY'
+        ORDER BY t.start_at ASC
+      `
+    : await sql`
+        SELECT
+          t.id,
+          t.schedule_scope,
+          t.owner_user_id,
+          t.title,
+          t.description,
+          t.start_at,
+          t.end_at,
+          t.bg_color,
+          t.label,
+          t.status,
+          t.assigned_from_user_id,
+          assignee.name AS assigned_from_name,
+          t.created_by_user_id,
+          creator.name AS created_by_name,
+          creator.avatar AS created_by_avatar,
+          t.updated_by_user_id,
+          editor.name AS updated_by_name,
+          editor.avatar AS updated_by_avatar,
+          t.confirmed_by_user_ids,
+          t.created_at
+        FROM schedule_tasks t
+        LEFT JOIN users assignee ON assignee.id = t.assigned_from_user_id
+        LEFT JOIN users creator ON creator.id = t.created_by_user_id
+        LEFT JOIN users editor ON editor.id = t.updated_by_user_id
+        WHERE t.schedule_scope = 'USER'
+          AND t.owner_user_id = ${params.ownerUserId ?? 0}
+          AND (${params.actorUserId} = ${params.ownerUserId ?? 0} OR UPPER(t.label) <> 'PERSONAL')
+        ORDER BY t.start_at ASC
+      `;
 
   return rows.map((row) => toTaskRecord(toDbTaskRow(row)));
 }
 
-export async function replaceTasksForOwner(
-  ownerUserId: number,
-  actorUserId: number,
+export async function replaceTasksForScope(
+  input: TaskScopeInput,
   tasks: TaskInput[],
 ): Promise<void> {
   const sql = getSql();
 
-  const assignedFromUserId = actorUserId === ownerUserId ? null : actorUserId;
-  const canManagePersonal = actorUserId === ownerUserId;
+  const isCompanyScope = input.scope === "COMPANY";
+  const ownerUserId = input.ownerUserId ?? null;
+  const actorUserId = input.actorUserId;
+  const assignedFromUserId = !isCompanyScope && ownerUserId !== null && actorUserId === ownerUserId
+    ? null
+    : actorUserId;
+  const canManagePersonal = !isCompanyScope && ownerUserId !== null && actorUserId === ownerUserId;
 
   await sql`BEGIN`;
 
   try {
-    if (canManagePersonal) {
-      await sql`DELETE FROM schedule_tasks WHERE owner_user_id = ${ownerUserId}`;
+    if (isCompanyScope) {
+      await sql`DELETE FROM schedule_tasks WHERE schedule_scope = 'COMPANY'`;
+    } else if (canManagePersonal) {
+      await sql`
+        DELETE FROM schedule_tasks
+        WHERE schedule_scope = 'USER'
+          AND owner_user_id = ${ownerUserId}
+      `;
     } else {
       await sql`
         DELETE FROM schedule_tasks
-        WHERE owner_user_id = ${ownerUserId}
+        WHERE schedule_scope = 'USER'
+          AND owner_user_id = ${ownerUserId}
           AND UPPER(label) <> 'PERSONAL'
       `;
     }
@@ -122,8 +220,13 @@ export async function replaceTasksForOwner(
     for (const task of tasks) {
       validateTaskInput(task);
       const normalizedLabel = canManagePersonal ? task.label : DEFAULT_LABEL;
+      const confirmedByUserIds = normalizeConfirmedUserIds(task.confirmedByUserIds, actorUserId);
+      const createdByUserId = isCompanyScope ? (task.createdByUserId ?? actorUserId) : null;
+      const updatedByUserId = isCompanyScope ? (task.updatedByUserId ?? actorUserId) : null;
+      const assignedBy = task.assignedFromUserId ?? assignedFromUserId;
       await sql`
         INSERT INTO schedule_tasks (
+          schedule_scope,
           owner_user_id,
           title,
           description,
@@ -132,10 +235,14 @@ export async function replaceTasksForOwner(
           bg_color,
           label,
           status,
-          assigned_from_user_id
+          assigned_from_user_id,
+          created_by_user_id,
+          updated_by_user_id,
+          confirmed_by_user_ids
         )
         VALUES (
-          ${ownerUserId},
+          ${input.scope},
+          ${isCompanyScope ? null : ownerUserId},
           ${task.title.trim()},
           ${task.description.trim()},
           ${task.startAt},
@@ -143,7 +250,10 @@ export async function replaceTasksForOwner(
           ${task.color.trim()},
           ${normalizedLabel},
           ${task.status},
-          ${assignedFromUserId}
+          ${assignedBy},
+          ${createdByUserId},
+          ${updatedByUserId},
+          ${JSON.stringify(confirmedByUserIds)}::jsonb
         )
       `;
     }
@@ -170,7 +280,18 @@ function validateTaskInput(task: TaskInput): void {
   }
 }
 
+function normalizeConfirmedUserIds(value: number[] | undefined, actorUserId: number): number[] {
+  const raw = Array.isArray(value) ? value : [];
+  const merged = new Set<number>([...raw, actorUserId]);
+  return Array.from(merged).filter((id) => Number.isFinite(id) && id > 0);
+}
+
 function toDbTaskRow(row: Record<string, unknown>): DbTaskRow {
+  const scope = row.schedule_scope;
+  if (scope !== "USER" && scope !== "COMPANY") {
+    throw new Error("Invalid task scope in database.");
+  }
+
   const status = row.status;
   if (status !== "PENDING" && status !== "IN_PROGRESS" && status !== "DONE") {
     throw new Error("Invalid task status in database.");
@@ -178,6 +299,7 @@ function toDbTaskRow(row: Record<string, unknown>): DbTaskRow {
 
   return {
     id: toNumber(row.id),
+    schedule_scope: scope,
     owner_user_id: toNumber(row.owner_user_id),
     title: String(row.title ?? ""),
     description: String(row.description ?? ""),
@@ -188,6 +310,13 @@ function toDbTaskRow(row: Record<string, unknown>): DbTaskRow {
     status,
     assigned_from_user_id: row.assigned_from_user_id == null ? null : toNumber(row.assigned_from_user_id),
     assigned_from_name: row.assigned_from_name == null ? null : String(row.assigned_from_name),
+    created_by_user_id: row.created_by_user_id == null ? null : toNumber(row.created_by_user_id),
+    created_by_name: row.created_by_name == null ? null : String(row.created_by_name),
+    created_by_avatar: row.created_by_avatar == null ? null : String(row.created_by_avatar),
+    updated_by_user_id: row.updated_by_user_id == null ? null : toNumber(row.updated_by_user_id),
+    updated_by_name: row.updated_by_name == null ? null : String(row.updated_by_name),
+    updated_by_avatar: row.updated_by_avatar == null ? null : String(row.updated_by_avatar),
+    confirmed_by_user_ids: toNumberArray(row.confirmed_by_user_ids),
     created_at: toIsoString(row.created_at),
   };
 }
@@ -195,6 +324,7 @@ function toDbTaskRow(row: Record<string, unknown>): DbTaskRow {
 function toTaskRecord(row: DbTaskRow): TaskRecord {
   return {
     id: row.id,
+    scope: row.schedule_scope,
     ownerUserId: row.owner_user_id,
     title: row.title,
     description: row.description,
@@ -205,8 +335,34 @@ function toTaskRecord(row: DbTaskRow): TaskRecord {
     status: row.status,
     assignedFromUserId: row.assigned_from_user_id,
     assignedFromName: row.assigned_from_name,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.created_by_name,
+    createdByAvatar: row.created_by_avatar,
+    updatedByUserId: row.updated_by_user_id,
+    updatedByName: row.updated_by_name,
+    updatedByAvatar: row.updated_by_avatar,
+    confirmedByUserIds: row.confirmed_by_user_ids,
     createdAt: row.created_at,
   };
+}
+
+function toNumberArray(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return toNumberArray(parsed);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
 }
 
 function toNumber(value: unknown): number {

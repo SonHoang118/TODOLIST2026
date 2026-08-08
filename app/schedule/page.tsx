@@ -118,6 +118,13 @@ interface Task {
   label: string;
   status: "PENDING" | "IN_PROGRESS" | "DONE";
   assignedFromName: string | null;
+  createdByUserId: number | null;
+  createdByName: string | null;
+  createdByAvatar: string | null;
+  updatedByUserId: number | null;
+  updatedByName: string | null;
+  updatedByAvatar: string | null;
+  confirmedByUserIds: number[];
 }
 
 interface SessionUser {
@@ -137,10 +144,18 @@ interface ApiTask {
   label: string;
   status: "PENDING" | "IN_PROGRESS" | "DONE";
   assignedFromName: string | null;
+  createdByUserId: number | null;
+  createdByName: string | null;
+  createdByAvatar: string | null;
+  updatedByUserId: number | null;
+  updatedByName: string | null;
+  updatedByAvatar: string | null;
+  confirmedByUserIds: number[];
 }
 
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 type TaskLabelValue = "DEFAULT" | "PERSONAL";
+type ScheduleScope = "USER" | "COMPANY";
 
 const DEFAULT_TASK_LABEL: TaskLabelValue = "DEFAULT";
 const PERSONAL_TASK_LABEL: TaskLabelValue = "PERSONAL";
@@ -158,6 +173,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 
 const AUTH_STORAGE_KEY = "todo2026.currentUser";
 const TASK_DRAFT_STORAGE_PREFIX = "todo2026.tasksDraft";
+const COMPANY_DRAFT_KEY = "company";
 
 const SLOT_MS = 30 * 60 * 1000;
 
@@ -167,7 +183,7 @@ interface LocalTaskDraft {
   tasks: Task[];
 }
 
-function taskDraftStorageKey(ownerUserId: number): string {
+function taskDraftStorageKey(ownerUserId: number | typeof COMPANY_DRAFT_KEY): string {
   return `${TASK_DRAFT_STORAGE_PREFIX}.${ownerUserId}`;
 }
 
@@ -184,6 +200,9 @@ function taskSignature(tasks: Task[]): string {
       label: task.label,
       status: task.status,
       assignedFromName: task.assignedFromName,
+      createdByUserId: task.createdByUserId,
+      updatedByUserId: task.updatedByUserId,
+      confirmedByUserIds: [...task.confirmedByUserIds].sort((a, b) => a - b),
     })),
   );
 }
@@ -263,10 +282,21 @@ function sanitizeDraftTask(value: unknown): Task | null {
     label: normalizeTaskLabel(task.label),
     status: task.status,
     assignedFromName: typeof task.assignedFromName === "string" ? task.assignedFromName : null,
+    createdByUserId: typeof task.createdByUserId === "number" ? task.createdByUserId : null,
+    createdByName: typeof task.createdByName === "string" ? task.createdByName : null,
+    createdByAvatar: typeof task.createdByAvatar === "string" ? task.createdByAvatar : null,
+    updatedByUserId: typeof task.updatedByUserId === "number" ? task.updatedByUserId : null,
+    updatedByName: typeof task.updatedByName === "string" ? task.updatedByName : null,
+    updatedByAvatar: typeof task.updatedByAvatar === "string" ? task.updatedByAvatar : null,
+    confirmedByUserIds: Array.isArray(task.confirmedByUserIds)
+      ? task.confirmedByUserIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      : [],
   };
 }
 
-function readTaskDraft(ownerUserId: number): LocalTaskDraft | null {
+function readTaskDraft(ownerUserId: number | typeof COMPANY_DRAFT_KEY): LocalTaskDraft | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(taskDraftStorageKey(ownerUserId));
   if (!raw) return null;
@@ -288,7 +318,7 @@ function readTaskDraft(ownerUserId: number): LocalTaskDraft | null {
   }
 }
 
-function writeTaskDraft(ownerUserId: number, tasks: Task[], synced: boolean): void {
+function writeTaskDraft(ownerUserId: number | typeof COMPANY_DRAFT_KEY, tasks: Task[], synced: boolean): void {
   if (typeof window === "undefined") return;
   const payload: LocalTaskDraft = {
     updatedAt: Date.now(),
@@ -314,6 +344,10 @@ function taskToApiInput(task: Task): {
   color: string;
   label: string;
   status: TaskStatus;
+  assignedFromUserId: number | null;
+  createdByUserId: number | null;
+  updatedByUserId: number | null;
+  confirmedByUserIds: number[];
 } {
   const start = buildDateFromAbsDayAndSlot(task.absDay, task.slotIndex);
   const end = new Date(start.getTime() + Math.max(1, task.span) * SLOT_MS);
@@ -325,6 +359,10 @@ function taskToApiInput(task: Task): {
     color: task.color,
     label: normalizeTaskLabel(task.label),
     status: task.status,
+    assignedFromUserId: null,
+    createdByUserId: task.createdByUserId,
+    updatedByUserId: task.updatedByUserId,
+    confirmedByUserIds: task.confirmedByUserIds,
   };
 }
 
@@ -346,7 +384,51 @@ function apiTaskToLocalTask(apiTask: ApiTask): Task {
     label: normalizeTaskLabel(apiTask.label),
     status: apiTask.status,
     assignedFromName: apiTask.assignedFromName,
+    createdByUserId: apiTask.createdByUserId,
+    createdByName: apiTask.createdByName,
+    createdByAvatar: apiTask.createdByAvatar,
+    updatedByUserId: apiTask.updatedByUserId,
+    updatedByName: apiTask.updatedByName,
+    updatedByAvatar: apiTask.updatedByAvatar,
+    confirmedByUserIds: Array.isArray(apiTask.confirmedByUserIds)
+      ? apiTask.confirmedByUserIds.filter((id) => Number.isFinite(id) && id > 0)
+      : [],
   };
+}
+
+function withTaskAudit(task: Task, actor: SessionUser | null): Task {
+  if (!actor) return task;
+
+  const confirmedSet = new Set<number>(task.confirmedByUserIds);
+  confirmedSet.add(actor.id);
+
+  return {
+    ...task,
+    updatedByUserId: actor.id,
+    updatedByName: actor.name,
+    updatedByAvatar: actor.avatar,
+    confirmedByUserIds: Array.from(confirmedSet),
+  };
+}
+
+function renderSmallAvatar(name: string | null, avatar: string | null, fallbackSeed?: number | null) {
+  const label = (name?.trim().charAt(0) || (fallbackSeed ? String(fallbackSeed).charAt(0) : "?")).toUpperCase();
+
+  if (avatar) {
+    return (
+      <img
+        src={avatar}
+        alt={name ?? "avatar"}
+        className="h-4 w-4 rounded-full object-cover border border-white/40 shrink-0"
+      />
+    );
+  }
+
+  return (
+    <div className="h-4 w-4 rounded-full bg-zinc-700 text-white text-[8px] font-semibold flex items-center justify-center border border-white/40 shrink-0">
+      {label}
+    </div>
+  );
 }
 
 function resolveTaskBgClass(taskColor: string, isDark: boolean): string {
@@ -468,6 +550,7 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
+  const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
   const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
@@ -478,6 +561,7 @@ export default function SchedulePage() {
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
   const authUserIdRef                      = useRef<number | null>(null);
+  const scheduleScopeRef                   = useRef<ScheduleScope>("USER");
   const isViewingOwnScheduleRef            = useRef(false);
   const lastSyncedSignatureRef             = useRef("");
   const hasPendingChangesRef               = useRef(false);
@@ -485,7 +569,8 @@ export default function SchedulePage() {
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
   authUserIdRef.current = authUserId;
-  isViewingOwnScheduleRef.current = sessionUser !== null && authUserId === sessionUser.id;
+  scheduleScopeRef.current = scheduleScope;
+  isViewingOwnScheduleRef.current = scheduleScope !== "COMPANY" && sessionUser !== null && authUserId === sessionUser.id;
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -603,7 +688,7 @@ export default function SchedulePage() {
   };
 
   const patchTask = (taskId: number, patch: Partial<Task>) => {
-    fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
+    fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId ? withTaskAudit({ ...t, ...patch }, sessionUserRef.current) : t)));
   };
 
   const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete", taskId: number) => {
@@ -631,16 +716,19 @@ export default function SchedulePage() {
     }
 
     if (action === "accept") {
-      fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "IN_PROGRESS" } : t));
+      if (scheduleScopeRef.current === "COMPANY") return;
+      fn.current.setTasks(prev => prev.map(t => t.id === taskId ? withTaskAudit({ ...t, status: "IN_PROGRESS" }, sessionUserRef.current) : t));
       fn.current.setBadge("Đã nhận task");
       return;
     }
+
+    if (scheduleScopeRef.current === "COMPANY") return;
 
     let nextStatus: TaskStatus = "DONE";
     fn.current.setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
       nextStatus = t.status === "DONE" ? "IN_PROGRESS" : "DONE";
-      return { ...t, status: nextStatus };
+      return withTaskAudit({ ...t, status: nextStatus }, sessionUserRef.current);
     }));
     fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đang làm lại");
     return;
@@ -925,7 +1013,7 @@ export default function SchedulePage() {
       if (gs.current.isResizeDragging && gs.current.resizeTaskId !== null) {
         const taskId    = gs.current.resizeTaskId;
         const finalSpan = resizeSpanRef.current;
-        fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, span: finalSpan } : t));
+        fn.current.setTasks(prev => prev.map(t => t.id === taskId ? withTaskAudit({ ...t, span: finalSpan }, sessionUserRef.current) : t));
         fn.current.setBadge(`${finalSpan * 30} phút`);
         gs.current.isResizeDragging = false;
         gs.current.resizeTaskId     = null;
@@ -939,7 +1027,7 @@ export default function SchedulePage() {
         if (dest) {
           fn.current.setTasks(prev => prev.map(task =>
             task.id === taskId
-              ? { ...task, absDay: viewStartAbsDayRef.current + dest.dayIndex, slotIndex: dest.slotIndex }
+              ? withTaskAudit({ ...task, absDay: viewStartAbsDayRef.current + dest.dayIndex, slotIndex: dest.slotIndex }, sessionUserRef.current)
               : task
           ));
           const destDate = absDayToDate(viewStartAbsDayRef.current + dest.dayIndex);
@@ -981,14 +1069,19 @@ export default function SchedulePage() {
             const id    = fn.current.nextId();
             const ownerName = usersForAuthRef.current.find((u) => u.id === authUserIdRef.current)?.name ?? null;
             const actorUser = sessionUserRef.current;
+            const isCompany = scheduleScopeRef.current === "COMPANY";
             const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
               ? actorUser.name
               : null;
-            const initialLabel: TaskLabelValue = actorUser && authUserIdRef.current === actorUser.id
+            const initialLabel: TaskLabelValue = isCompany
+              ? DEFAULT_TASK_LABEL
+              : actorUser && authUserIdRef.current === actorUser.id
               ? PERSONAL_TASK_LABEL
               : DEFAULT_TASK_LABEL;
             const color = initialLabel === PERSONAL_TASK_LABEL ? PERSONAL_TASK_BG : DEFAULT_TASK_BG;
-            const initialStatus: TaskStatus = actorUser && authUserIdRef.current === actorUser.id
+            const initialStatus: TaskStatus = isCompany
+              ? "IN_PROGRESS"
+              : actorUser && authUserIdRef.current === actorUser.id
               ? "IN_PROGRESS"
               : "PENDING";
 
@@ -1002,7 +1095,14 @@ export default function SchedulePage() {
               color,
               label: initialLabel,
               status: initialStatus,
-              assignedFromName,
+              assignedFromName: isCompany ? null : assignedFromName,
+              createdByUserId: actorUser?.id ?? null,
+              createdByName: actorUser?.name ?? null,
+              createdByAvatar: actorUser?.avatar ?? null,
+              updatedByUserId: actorUser?.id ?? null,
+              updatedByName: actorUser?.name ?? null,
+              updatedByAvatar: actorUser?.avatar ?? null,
+              confirmedByUserIds: actorUser ? [actorUser.id] : [],
             }]);
             fn.current.setResizingId(id);
             fn.current.setBadge("Kéo thanh để điều chỉnh thời lượng");
@@ -1066,14 +1166,16 @@ export default function SchedulePage() {
     tasksToSave: Task[],
     options?: { showBadge?: boolean; keepalive?: boolean },
   ) => {
-    if (!authUserId || !sessionUser || isHydratingTasksRef.current) return;
+    if (!sessionUser || isHydratingTasksRef.current) return;
+    if (scheduleScope === "USER" && !authUserId) return;
 
     try {
       const response = await fetch("/api/tasks", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ownerUserId: authUserId,
+          scope: scheduleScope,
+          ownerUserId: scheduleScope === "USER" ? authUserId : undefined,
           actorUserId: sessionUser.id,
           tasks: tasksToSave.map(taskToApiInput),
         }),
@@ -1090,33 +1192,47 @@ export default function SchedulePage() {
       }
       lastSyncedSignatureRef.current = taskSignature(tasksToSave);
       hasPendingChangesRef.current = false;
-      writeTaskDraft(authUserId, tasksToSave, true);
+      writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, true);
     } catch (error) {
       hasPendingChangesRef.current = true;
-      writeTaskDraft(authUserId, tasksToSave, false);
+      writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, false);
       if (!options?.keepalive) {
         setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
       }
     }
   };
 
-  const loadTasksForViewedUser = async (ownerUserId: number) => {
+  const loadTasks = async () => {
     try {
       isHydratingTasksRef.current = true;
       const actorUserId = sessionUserRef.current?.id;
-      const query = actorUserId
-        ? `/api/tasks?ownerUserId=${ownerUserId}&actorUserId=${actorUserId}`
-        : `/api/tasks?ownerUserId=${ownerUserId}`;
+      const scope = scheduleScopeRef.current;
+      const ownerUserId = authUserIdRef.current;
+      if (scope === "USER" && !ownerUserId) {
+        setTasks([]);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set("scope", scope);
+      if (scope === "USER" && ownerUserId) {
+        params.set("ownerUserId", String(ownerUserId));
+      }
+      if (actorUserId) {
+        params.set("actorUserId", String(actorUserId));
+      }
+      const query = `/api/tasks?${params.toString()}`;
       const response = await fetch(query, { cache: "no-store" });
       const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
       if (!response.ok || !Array.isArray(data.tasks)) {
         throw new Error(data.error ?? "Không thể tải task.");
       }
-      const canViewPersonal = sessionUserRef.current?.id === ownerUserId;
+      const canViewPersonal = scope === "USER" && sessionUserRef.current?.id === ownerUserId;
       const remoteTasks = ensureUniqueTaskIds(data.tasks
         .map(apiTaskToLocalTask)
         .filter((task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL));
-      const draft = readTaskDraft(ownerUserId);
+      const draftKey = scope === "USER" ? ownerUserId! : COMPANY_DRAFT_KEY;
+      const draft = readTaskDraft(draftKey);
       const draftTasks = ensureUniqueTaskIds((draft?.tasks ?? []).filter(
         (task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL,
       ));
@@ -1144,7 +1260,7 @@ export default function SchedulePage() {
   taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
       lastSyncedSignatureRef.current = taskSignature(remoteTasks);
       hasPendingChangesRef.current = false;
-      writeTaskDraft(ownerUserId, remoteTasks, true);
+        writeTaskDraft(draftKey, remoteTasks, true);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Không thể tải task.");
       setTasks([]);
@@ -1165,25 +1281,35 @@ export default function SchedulePage() {
     }
   };
 
-  useEffect(() => {
-    if (!authUserId) return;
-    void loadTasksForViewedUser(authUserId);
-  }, [authUserId]);
+  const handleScheduleScopeChange = (nextScope: ScheduleScope) => {
+    setScheduleScope(nextScope);
+    setResizingId(null);
+    setReviewTaskId(null);
+    setEditingId(null);
+    setBadge(nextScope === "COMPANY" ? "Đang xem lịch công ty" : "Đang xem lịch cá nhân");
+  };
 
   useEffect(() => {
-    if (!authUserId || isHydratingTasksRef.current) return;
+    if (scheduleScope === "USER" && !authUserId) return;
+    void loadTasks();
+  }, [authUserId, scheduleScope]);
+
+  useEffect(() => {
+    const draftKey = scheduleScope === "USER" ? authUserId : COMPANY_DRAFT_KEY;
+    if (!draftKey || isHydratingTasksRef.current) return;
     const signature = taskSignature(tasks);
     const isSynced = signature === lastSyncedSignatureRef.current;
     hasPendingChangesRef.current = !isSynced;
-    writeTaskDraft(authUserId, tasks, isSynced);
-  }, [tasks, authUserId]);
+    writeTaskDraft(draftKey, tasks, isSynced);
+  }, [tasks, authUserId, scheduleScope]);
 
   useEffect(() => {
     taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(tasks));
   }, [tasks]);
 
   useEffect(() => {
-    if (!authUserId || !sessionUser || isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
+    if (!sessionUser || isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
+    if (scheduleScope === "USER" && !authUserId) return;
 
     const snapshot = tasks;
     const t = setTimeout(async () => {
@@ -1191,7 +1317,7 @@ export default function SchedulePage() {
     }, 15000);
 
     return () => clearTimeout(t);
-  }, [tasks, authUserId, sessionUser]);
+  }, [tasks, authUserId, sessionUser, scheduleScope]);
 
   useEffect(() => {
     const flushPendingTasks = () => {
@@ -1199,16 +1325,18 @@ export default function SchedulePage() {
 
       const ownerUserId = authUserIdRef.current;
       const actorUser = sessionUserRef.current;
-      if (!ownerUserId || !actorUser) return;
+      const scope = scheduleScopeRef.current;
+      if ((scope === "USER" && !ownerUserId) || !actorUser) return;
 
       const snapshot = tasksRef.current;
-      writeTaskDraft(ownerUserId, snapshot, false);
+      writeTaskDraft(scope === "USER" ? ownerUserId! : COMPANY_DRAFT_KEY, snapshot, false);
 
       void fetch("/api/tasks", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ownerUserId,
+          scope,
+          ownerUserId: scope === "USER" ? ownerUserId : undefined,
           actorUserId: actorUser.id,
           tasks: snapshot.map(taskToApiInput),
         }),
@@ -1286,7 +1414,8 @@ export default function SchedulePage() {
   const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
-  const draggingTaskIsDone = draggingTask?.status === "DONE";
+  const isCompanySchedule = scheduleScope === "COMPANY";
+  const draggingTaskIsDone = !isCompanySchedule && draggingTask?.status === "DONE";
   const draggingTaskBgClass = draggingTaskIsDone
     ? doneTaskBgClass(isDark)
     : draggingTask && !isHexColor(draggingTask.color)
@@ -1295,7 +1424,7 @@ export default function SchedulePage() {
   const draggingTaskBgStyle = draggingTask && !draggingTaskIsDone && isHexColor(draggingTask.color)
     ? { backgroundColor: draggingTask.color }
     : undefined;
-  const isViewingOwnSchedule = sessionUser !== null && authUserId === sessionUser.id;
+  const isViewingOwnSchedule = !isCompanySchedule && sessionUser !== null && authUserId === sessionUser.id;
 
   const handleResetInfiniteView = () => {
     const c = scrollRef.current;
@@ -1487,12 +1616,17 @@ export default function SchedulePage() {
                 const isDraggingThis = draggingId    === task.id;
                 const isResizing     = resizingId    === task.id;
                 const isLongPressed  = longPressedId === task.id;
-                const isPending = task.status === "PENDING";
-                const isInProgress = task.status === "IN_PROGRESS";
-                const isDone = task.status === "DONE";
-                const assignedFromUser = task.assignedFromName
-                  ? usersForAuth.find((user) => user.name === task.assignedFromName)
-                  : undefined;
+                const isPending = !isCompanySchedule && task.status === "PENDING";
+                const isInProgress = !isCompanySchedule && task.status === "IN_PROGRESS";
+                const isDone = !isCompanySchedule && task.status === "DONE";
+                const creatorName = task.createdByName ?? task.assignedFromName;
+                const creatorAvatar = task.createdByAvatar ?? null;
+                const creatorId = task.createdByUserId;
+                const editorName = task.updatedByName;
+                const editorAvatar = task.updatedByAvatar;
+                const confirmerUsers = task.confirmedByUserIds
+                  .map((id) => usersForAuth.find((user) => user.id === id))
+                  .filter((user): user is SessionUser => Boolean(user));
                 const taskBgClass = isDone
                   ? ""
                   : isHexColor(task.color)
@@ -1534,7 +1668,7 @@ export default function SchedulePage() {
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8, ...taskBgStyle }}
                   >
-                    {isViewingOwnSchedule && (isInProgress || isDone) && (
+                    {!isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) && (
                       <button
                         type="button"
                         data-action="complete"
@@ -1548,7 +1682,20 @@ export default function SchedulePage() {
                       </button>
                     )}
 
-                    <div className="flex items-start gap-1 pl-6">
+                    {isCompanySchedule && creatorName && (
+                      <div className="flex items-center gap-1.5 text-white/70 text-[9px] truncate mb-0.5">
+                        <span>from:</span>
+                        {renderSmallAvatar(creatorName, creatorAvatar, creatorId)}
+                      </div>
+                    )}
+                    {isCompanySchedule && editorName && (
+                      <div className="flex items-center gap-1.5 text-white/70 text-[9px] truncate mb-0.5">
+                        <span>sửa lần cuối:</span>
+                        {renderSmallAvatar(editorName, editorAvatar, task.updatedByUserId)}
+                      </div>
+                    )}
+
+                    <div className={`flex items-start gap-1 ${!isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) ? "pl-6" : "pl-0"}`}>
                       <p
                         className={`text-[11px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
                         style={{
@@ -1589,20 +1736,24 @@ export default function SchedulePage() {
                       </p>
                     )}
 
-                    {task.assignedFromName && (
+                    {!isCompanySchedule && task.assignedFromName && (
                       <div className="flex items-center gap-1.5 text-white/65 text-[9px] truncate">
                         <span>from:</span>
-                        {assignedFromUser?.avatar ? (
-                          <img
-                            src={assignedFromUser.avatar}
-                            alt={task.assignedFromName}
-                            className="h-4 w-4 rounded-full object-cover border border-white/40"
-                          />
-                        ) : (
-                          <div className="h-4 w-4 rounded-full bg-zinc-700 text-white text-[8px] font-semibold flex items-center justify-center border border-white/40 shrink-0">
-                            {task.assignedFromName.trim().charAt(0).toUpperCase() || "?"}
-                          </div>
-                        )}
+                        {renderSmallAvatar(task.assignedFromName, usersForAuth.find((user) => user.name === task.assignedFromName)?.avatar ?? null)}
+                      </div>
+                    )}
+
+                    {isCompanySchedule && confirmerUsers.length > 0 && (
+                      <div className="mt-auto flex items-center gap-1.5 text-white/70 text-[9px] truncate">
+                        <span>đã xác nhận:</span>
+                        <div className="flex items-center gap-1">
+                          {confirmerUsers.slice(0, 4).map((user) => (
+                            <div key={user.id}>{renderSmallAvatar(user.name, user.avatar, user.id)}</div>
+                          ))}
+                          {confirmerUsers.length > 4 && (
+                            <span className="text-[8px] text-white/70">+{confirmerUsers.length - 4}</span>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1743,6 +1894,32 @@ export default function SchedulePage() {
               </div>
 
               <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
+                <p className="text-sm font-medium">Chế độ lịch</p>
+                <div className={`grid grid-cols-2 rounded-lg p-1 ${th.inputBg}`}>
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleScopeChange("USER")}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${scheduleScope === "USER" ? "bg-violet-600 text-white" : "text-zinc-300"}`}
+                  >
+                    Lịch cá nhân
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleScheduleScopeChange("COMPANY")}
+                    className={`rounded-md px-2 py-1.5 text-xs font-medium transition ${scheduleScope === "COMPANY" ? "bg-violet-600 text-white" : "text-zinc-300"}`}
+                  >
+                    Lịch công ty
+                  </button>
+                </div>
+                <p className={`text-[11px] ${th.subtext}`}>
+                  {scheduleScope === "COMPANY"
+                    ? "Lịch chung: ai cũng có thể xem và sửa"
+                    : "Lịch theo từng tài khoản"}
+                </p>
+              </div>
+
+              {scheduleScope === "USER" && (
+                <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
                 <p className="text-sm font-medium">Xem lịch của</p>
                 <select
                   value={authUserId ?? ""}
@@ -1777,7 +1954,12 @@ export default function SchedulePage() {
                 })()}
 
                 {authError && <p className="text-[11px] text-rose-400">{authError}</p>}
-              </div>
+                </div>
+              )}
+
+              {scheduleScope === "COMPANY" && authError && (
+                <p className="text-[11px] text-rose-400">{authError}</p>
+              )}
 
               {/* Dark / Light toggle */}
               <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
@@ -1913,10 +2095,12 @@ export default function SchedulePage() {
                     <span className="text-xs">{colorToPickerHex(task.color)}</span>
                   </div>
                 </div>
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className={`text-[11px] ${th.subtext}`}>Trạng thái</p>
-                  <p className="mt-0.5 text-sm">{STATUS_LABEL[task.status]}</p>
-                </div>
+                {!isCompanySchedule && (
+                  <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                    <p className={`text-[11px] ${th.subtext}`}>Trạng thái</p>
+                    <p className="mt-0.5 text-sm">{STATUS_LABEL[task.status]}</p>
+                  </div>
+                )}
               </div>
 
               <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
@@ -1979,7 +2163,7 @@ export default function SchedulePage() {
                       description: editDescription,
                       label: normalizeTaskLabel(editLabel),
                       status: editStatus,
-                    } : t));
+                    } : t).map((t) => (t.id === editingId ? withTaskAudit(t, sessionUserRef.current) : t)));
                     setEditingId(null);
                   }
                   if (e.key === "Escape") setEditingId(null);
@@ -2003,18 +2187,20 @@ export default function SchedulePage() {
                     <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
                   </select>
                 </div>
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
-                  <select
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
-                    value={editStatus}
-                    onChange={e => setEditStatus(e.target.value as TaskStatus)}
-                  >
-                    <option value="PENDING">{STATUS_LABEL.PENDING}</option>
-                    <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
-                    <option value="DONE">{STATUS_LABEL.DONE}</option>
-                  </select>
-                </div>
+                {!isCompanySchedule && (
+                  <div>
+                    <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
+                    <select
+                      className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
+                      value={editStatus}
+                      onChange={e => setEditStatus(e.target.value as TaskStatus)}
+                    >
+                      <option value="PENDING">{STATUS_LABEL.PENDING}</option>
+                      <option value="IN_PROGRESS">{STATUS_LABEL.IN_PROGRESS}</option>
+                      <option value="DONE">{STATUS_LABEL.DONE}</option>
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="flex gap-2 mt-3">
                 <button
@@ -2029,7 +2215,7 @@ export default function SchedulePage() {
                       description: editDescription,
                       label: normalizeTaskLabel(editLabel),
                       status: editStatus,
-                    } : t));
+                    } : t).map((t) => (t.id === editingId ? withTaskAudit(t, sessionUserRef.current) : t)));
                     setEditingId(null);
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold"

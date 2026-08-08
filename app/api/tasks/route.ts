@@ -2,10 +2,11 @@ import { NextRequest } from "next/server";
 
 import {
   ensureTasksTable,
-  listTasksByOwner,
-  replaceTasksForOwner,
+  listTasksByScope,
+  replaceTasksForScope,
   type TaskInput,
   type TaskLabel,
+  type TaskScope,
   type TaskStatus,
 } from "@/lib/tasks-repository";
 import { ensureBootstrapAdmin, ensureUsersTable } from "@/lib/users-repository";
@@ -13,6 +14,7 @@ import { ensureBootstrapAdmin, ensureUsersTable } from "@/lib/users-repository";
 export const runtime = "nodejs";
 
 interface ReplaceTasksRequest {
+  scope?: unknown;
   ownerUserId?: unknown;
   actorUserId?: unknown;
   tasks?: unknown;
@@ -26,18 +28,29 @@ interface TaskItemRequest {
   color?: unknown;
   label?: unknown;
   status?: unknown;
+  assignedFromUserId?: unknown;
+  createdByUserId?: unknown;
+  updatedByUserId?: unknown;
+  confirmedByUserIds?: unknown;
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const ownerUserId = parsePositiveInt(request.nextUrl.searchParams.get("ownerUserId"), "ownerUserId");
+    const scope = parseScope(request.nextUrl.searchParams.get("scope"));
+    const ownerUserId = scope === "COMPANY"
+      ? undefined
+      : parsePositiveInt(request.nextUrl.searchParams.get("ownerUserId"), "ownerUserId");
     const actorUserId = parseOptionalPositiveInt(request.nextUrl.searchParams.get("actorUserId"));
 
     await ensureUsersTable();
     await ensureBootstrapAdmin();
     await ensureTasksTable();
 
-    const tasks = await listTasksByOwner(ownerUserId, actorUserId ?? ownerUserId);
+    const tasks = await listTasksByScope({
+      scope,
+      ownerUserId,
+      actorUserId: actorUserId ?? ownerUserId ?? 0,
+    });
     return Response.json({ tasks }, { status: 200 });
   } catch (error) {
     return Response.json({ error: toErrorMessage(error, "Could not load tasks") }, { status: 400 });
@@ -47,7 +60,10 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = (await request.json()) as ReplaceTasksRequest;
-    const ownerUserId = parseBodyUserId(body.ownerUserId, "ownerUserId");
+    const scope = parseBodyScope(body.scope);
+    const ownerUserId = scope === "COMPANY"
+      ? undefined
+      : parseBodyUserId(body.ownerUserId, "ownerUserId");
     const actorUserId = parseBodyUserId(body.actorUserId, "actorUserId");
     const tasks = parseTaskList(body.tasks);
 
@@ -55,8 +71,8 @@ export async function PUT(request: NextRequest) {
     await ensureBootstrapAdmin();
     await ensureTasksTable();
 
-    await replaceTasksForOwner(ownerUserId, actorUserId, tasks);
-    const saved = await listTasksByOwner(ownerUserId, actorUserId);
+    await replaceTasksForScope({ scope, ownerUserId, actorUserId }, tasks);
+    const saved = await listTasksByScope({ scope, ownerUserId, actorUserId });
 
     return Response.json({ tasks: saved }, { status: 200 });
   } catch (error) {
@@ -91,7 +107,20 @@ function parseTaskItem(value: unknown): TaskInput {
     color: typeof item.color === "string" && item.color.trim().length > 0 ? item.color : "bg-violet-600",
     label,
     status,
+    assignedFromUserId: parseOptionalBodyUserId(item.assignedFromUserId),
+    createdByUserId: parseOptionalBodyUserId(item.createdByUserId),
+    updatedByUserId: parseOptionalBodyUserId(item.updatedByUserId),
+    confirmedByUserIds: parseOptionalNumberList(item.confirmedByUserIds),
   };
+}
+
+function parseScope(raw: string | null): TaskScope {
+  if (!raw) return "USER";
+  return raw === "COMPANY" ? "COMPANY" : "USER";
+}
+
+function parseBodyScope(value: unknown): TaskScope {
+  return value === "COMPANY" ? "COMPANY" : "USER";
 }
 
 function parseStatus(value: unknown): TaskStatus {
@@ -118,6 +147,22 @@ function parseBodyUserId(value: unknown, fieldName: string): number {
     throw new Error(`Invalid ${fieldName}.`);
   }
   return id;
+}
+
+function parseOptionalBodyUserId(value: unknown): number | null {
+  if (value == null) return null;
+  const id = Number(value);
+  if (Number.isNaN(id) || id <= 0) {
+    return null;
+  }
+  return id;
+}
+
+function parseOptionalNumberList(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0);
 }
 
 function parsePositiveInt(raw: string | null, fieldName: string): number {
