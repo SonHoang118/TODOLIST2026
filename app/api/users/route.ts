@@ -6,6 +6,7 @@ import {
   ensureBootstrapAdmin,
   ensureUsersTable,
   listTempUsers,
+  updateUserAvatar,
   type UserRole,
 } from "@/lib/users-repository";
 
@@ -16,6 +17,10 @@ interface CreateUserRequest {
   name?: unknown;
   avatar?: unknown;
   password?: unknown;
+}
+
+interface UpdateAvatarRequest {
+  avatar?: unknown;
 }
 
 export async function GET() {
@@ -51,6 +56,24 @@ export async function POST(request: NextRequest) {
       : message.startsWith("Forbidden") ? 403
       : 500;
 
+    return Response.json({ error: message }, { status });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const actorId = parseActorUserId(request.headers.get("x-actor-user-id"));
+    const body = (await request.json()) as UpdateAvatarRequest;
+    const avatar = parseAvatarPayload(body);
+
+    await ensureUsersTable();
+    await ensureBootstrapAdmin();
+    const user = await updateUserAvatar(actorId, avatar);
+
+    return Response.json({ user }, { status: 200 });
+  } catch (error) {
+    const message = toErrorMessage(error, "Could not update avatar");
+    const status = message.startsWith("Invalid") ? 400 : 500;
     return Response.json({ error: message }, { status });
   }
 }
@@ -91,6 +114,13 @@ function parseCreateUserPayload(body: CreateUserRequest): {
     avatar: body.avatar.trim(),
     password: body.password,
   };
+}
+
+function parseAvatarPayload(body: UpdateAvatarRequest): string {
+  if (typeof body.avatar !== "string" || body.avatar.trim().length === 0) {
+    throw new Error("Invalid avatar. Avatar is required.");
+  }
+  return body.avatar.trim();
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {

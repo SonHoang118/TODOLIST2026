@@ -154,6 +154,24 @@ export async function assertAdminUser(userId: number): Promise<void> {
   }
 }
 
+export async function updateUserAvatar(userId: number, avatar: string): Promise<PublicUser> {
+  const sql = getSql();
+
+  const rows = await sql`
+    UPDATE users
+    SET avatar = ${avatar}
+    WHERE id = ${userId}
+    RETURNING id, role, name, avatar, created_at
+  `;
+
+  const updated = rows[0];
+  if (!updated) {
+    throw new Error("User not found.");
+  }
+
+  return mapPublicUser(toDbPublicUser(updated));
+}
+
 function mapPublicUser(user: DbPublicUser): PublicUser {
   return {
     id: user.id,

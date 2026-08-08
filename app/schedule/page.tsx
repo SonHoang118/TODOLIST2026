@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { FormEvent, useState, useRef, useEffect, useLayoutEffect } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -107,6 +107,12 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(false);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
+  const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
+  const [authUserId, setAuthUserId]       = useState<number | null>(null);
+  const [authPassword, setAuthPassword]   = useState("");
+  const [authError, setAuthError]         = useState<string | null>(null);
+  const [authBusy, setAuthBusy]           = useState(false);
+  const avatarInputRef                    = useRef<HTMLInputElement>(null);
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
   const effSlotH    = Math.round(SLOT_H * zoomLevel);
@@ -479,26 +485,96 @@ export default function SchedulePage() {
   }, [badge]);
 
   useEffect(() => {
-    const loadSessionUser = async () => {
-      try {
-        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as { id?: number };
-        if (typeof parsed.id !== "number") return;
-
-        const res = await fetch("/api/users", { cache: "no-store" });
-        const data = (await res.json()) as { users?: SessionUser[] };
-        if (!res.ok || !Array.isArray(data.users)) return;
-
-        const found = data.users.find((u) => u.id === parsed.id) ?? null;
-        setSessionUser(found);
-      } catch {
-        setSessionUser(null);
-      }
-    };
-
-    void loadSessionUser();
+    void loadAuthUsers();
   }, []);
+
+  const loadAuthUsers = async () => {
+    try {
+      const res = await fetch("/api/users", { cache: "no-store" });
+      const data = (await res.json()) as { users?: SessionUser[] };
+      if (!res.ok || !Array.isArray(data.users)) return;
+
+      const fetchedUsers = data.users;
+      setUsersForAuth(fetchedUsers);
+
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+      const parsed = raw ? (JSON.parse(raw) as { id?: number }) : null;
+      const activeId = typeof parsed?.id === "number" ? parsed.id : null;
+      const activeUser = fetchedUsers.find((u) => u.id === activeId) ?? null;
+
+      setSessionUser(activeUser);
+      setAuthUserId((prev) => prev ?? activeUser?.id ?? fetchedUsers[0]?.id ?? null);
+    } catch {
+      setSessionUser(null);
+    }
+  };
+
+  const handleSidebarLogin = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!authUserId) {
+      setAuthError("Vui lòng chọn tài khoản.");
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: authUserId, password: authPassword }),
+      });
+      const data = (await response.json()) as { user?: SessionUser; error?: string };
+      if (!response.ok || !data.user) {
+        throw new Error(data.error ?? "Đăng nhập thất bại.");
+      }
+
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ id: data.user.id }));
+      setSessionUser(data.user);
+      setAuthPassword("");
+      setBadge(`Đang dùng: ${data.user.name}`);
+      await loadAuthUsers();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Đăng nhập thất bại.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleAvatarPick = () => {
+    if (!sessionUser) return;
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (file: File | null) => {
+    if (!sessionUser || !file) return;
+    setAuthBusy(true);
+    setAuthError(null);
+
+    try {
+      const avatarUrl = await uploadAvatarToCloudinary(file);
+      const response = await fetch("/api/users", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-user-id": String(sessionUser.id),
+        },
+        body: JSON.stringify({ avatar: avatarUrl }),
+      });
+      const data = (await response.json()) as { user?: SessionUser; error?: string };
+      if (!response.ok || !data.user) {
+        throw new Error(data.error ?? "Không thể cập nhật avatar.");
+      }
+
+      setSessionUser(data.user);
+      setBadge("Đã cập nhật avatar");
+      await loadAuthUsers();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Không thể cập nhật avatar.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   // Scroll to today when switching to infinite mode
   useEffect(() => {
@@ -807,22 +883,72 @@ export default function SchedulePage() {
                 <p className={`text-[11px] uppercase tracking-wide ${th.subtext}`}>Tài khoản đang dùng</p>
                 {sessionUser ? (
                   <div className="mt-2 flex items-center gap-2.5">
-                    {sessionUser.avatar ? (
-                      <img src={sessionUser.avatar} alt={sessionUser.name} className="h-10 w-10 rounded-lg object-cover" />
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg bg-zinc-700 flex items-center justify-center text-sm font-semibold">
-                        {sessionUser.name.trim().charAt(0).toUpperCase() || "U"}
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={handleAvatarPick}
+                      className="h-10 w-10 rounded-lg overflow-hidden border border-zinc-700 relative"
+                      title="Bấm để đổi avatar"
+                    >
+                      {sessionUser.avatar ? (
+                        <img src={sessionUser.avatar} alt={sessionUser.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full bg-zinc-700 flex items-center justify-center text-sm font-semibold">
+                          {sessionUser.name.trim().charAt(0).toUpperCase() || "U"}
+                        </div>
+                      )}
+                    </button>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold truncate">{sessionUser.name}</p>
                       <p className={`text-xs ${th.subtext}`}>{sessionUser.role} · ID {sessionUser.id}</p>
+                      <p className={`text-[11px] ${th.subtext}`}>Bấm avatar để thay ảnh</p>
                     </div>
                   </div>
                 ) : (
                   <p className={`mt-2 text-xs ${th.subtext}`}>Chưa có phiên đăng nhập.</p>
                 )}
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    void handleAvatarFileChange(file);
+                    e.currentTarget.value = "";
+                  }}
+                />
               </div>
+
+              <form onSubmit={handleSidebarLogin} className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
+                <p className="text-sm font-medium">Đổi tài khoản đăng nhập</p>
+                <select
+                  value={authUserId ?? ""}
+                  onChange={(e) => setAuthUserId(Number(e.target.value))}
+                  className={`h-9 rounded-lg ${th.inputBg} text-inherit px-2 text-sm outline-none`}
+                  required
+                >
+                  <option value="" disabled>Chọn tài khoản</option>
+                  {usersForAuth.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu"
+                  className={`h-9 rounded-lg ${th.inputBg} text-inherit px-2 text-sm outline-none`}
+                  required
+                />
+                {authError && <p className="text-[11px] text-rose-400">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className="h-9 rounded-lg bg-violet-600 text-white text-sm font-semibold disabled:opacity-60"
+                >
+                  {authBusy ? "Đang xử lý..." : "Đăng nhập"}
+                </button>
+              </form>
 
               {/* Dark / Light toggle */}
               <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
@@ -903,4 +1029,29 @@ export default function SchedulePage() {
       })()}
     </div>
   );
+}
+
+async function uploadAvatarToCloudinary(file: File): Promise<string> {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
+
+  if (!cloudName || !uploadPreset) {
+    throw new Error("Thiếu NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME hoặc NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", uploadPreset);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = (await response.json()) as { secure_url?: string; error?: { message?: string } };
+  if (!response.ok || !data.secure_url) {
+    throw new Error(data.error?.message ?? "Upload avatar thất bại.");
+  }
+
+  return data.secure_url;
 }
