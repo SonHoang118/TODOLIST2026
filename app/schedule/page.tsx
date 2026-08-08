@@ -384,6 +384,7 @@ export default function SchedulePage() {
   const [draggingId, setDraggingId]       = useState<number | null>(null);
   const [longPressedId, setLongPressedId] = useState<number | null>(null);
   const [dragPos, setDragPos]             = useState({ x: 0, y: 0 });
+  const [dragPreview, setDragPreview]     = useState<{ dayIndex: number; slotIndex: number } | null>(null);
   const [resizingId, setResizingId]       = useState<number | null>(null);
   const [reviewTaskId, setReviewTaskId]   = useState<number | null>(null);
   const [editingId, setEditingId]         = useState<number | null>(null);
@@ -443,7 +444,7 @@ export default function SchedulePage() {
   // Callback refs
   const fn = useRef({
     setTasks, setDraggingId, setLongPressedId,
-    setDragPos, setResizingId, setEditingId, setEditTitle, setBadge, setZoomLevel,
+    setDragPos, setDragPreview, setResizingId, setEditingId, setEditTitle, setBadge, setZoomLevel,
     nextId:    (): number => ++taskIdRef.current,
     nextColor: (): string => { const c = COLORS[colorRef.current % COLORS.length]; colorRef.current++; return c; },
   });
@@ -451,6 +452,7 @@ export default function SchedulePage() {
   fn.current.setDraggingId    = setDraggingId;
   fn.current.setLongPressedId = setLongPressedId;
   fn.current.setDragPos       = setDragPos;
+  fn.current.setDragPreview   = setDragPreview;
   fn.current.setResizingId    = setResizingId;
   fn.current.setEditingId     = setEditingId;
   fn.current.setEditTitle     = setEditTitle;
@@ -769,11 +771,13 @@ export default function SchedulePage() {
       if (gs.current.longPressFired && !gs.current.isDragging && (adx > DRAG_DELTA || ady > DRAG_DELTA)) {
         gs.current.isDragging = true;
         fn.current.setDraggingId(gs.current.draggingTaskId!);
+        fn.current.setDragPreview(screenToSlot(t.clientX, t.clientY));
         fn.current.setLongPressedId(null);
       }
 
       if (gs.current.isDragging) {
         e.preventDefault(); // stop native scroll during task drag
+        fn.current.setDragPreview(screenToSlot(t.clientX, t.clientY));
         fn.current.setDragPos({ x: t.clientX, y: t.clientY });
         return;
       }
@@ -847,6 +851,7 @@ export default function SchedulePage() {
           const destDate = absDayToDate(viewStartAbsDayRef.current + dest.dayIndex);
           fn.current.setBadge(`${dayShortOf(destDate)} ${slotLabel(dest.slotIndex)}`);
         }
+        fn.current.setDragPreview(null);
         fn.current.setDraggingId(null);
         gs.current.isDragging     = false;
         gs.current.draggingTaskId = null;
@@ -916,6 +921,7 @@ export default function SchedulePage() {
       gs.current.touchedDay     = null;
       gs.current.touchedSlot    = null;
       gs.current.didScroll      = false;
+      fn.current.setDragPreview(null);
     };
 
     container.addEventListener("touchstart", onStart, { passive: false });
@@ -1410,7 +1416,7 @@ export default function SchedulePage() {
                   {/* Task body */}
                   <div
                     className={`absolute inset-0 ${taskBgClass} flex flex-col p-1.5 transition-all duration-100
-                      ${isDraggingThis ? "opacity-30 scale-[0.93]" : ""}
+                      ${isDraggingThis ? "opacity-0" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
                       ${isDone ? doneTaskBgClass(isDark) : ""}
@@ -1519,6 +1525,22 @@ export default function SchedulePage() {
                 </div>
               );
             })}
+
+              {/* Drag destination preview */}
+              {draggingTask && dragPreview && (
+                <div
+                  className={`absolute pointer-events-none rounded-lg ${draggingTaskBgClass} border-2 border-dashed border-white/80`}
+                  style={{
+                    left: dragPreview.dayIndex * dayWidth + 2,
+                    top: dragPreview.slotIndex * effSlotH,
+                    width: dayWidth - 4,
+                    height: draggingTask.span * effSlotH,
+                    opacity: 0.35,
+                    zIndex: 18,
+                    ...draggingTaskBgStyle,
+                  }}
+                />
+              )}
             </div>{/* end grid */}
           </div>{/* end body row */}
         </div>{/* end content wrapper */}
