@@ -14,7 +14,6 @@ const DAYS      = 7;
 const LONG_PRESS_MS = 350;
 const DRAG_DELTA    = 8;
 const HANDLE_H      = 14;
-const COMPLETE_TOGGLE_DEBOUNCE_MS = 280;
 const DAY_W_MIN     = 60;
 const DAY_W_MAX     = 140;
 const DAY_W_STEP    = 20;
@@ -414,7 +413,6 @@ export default function SchedulePage() {
   const scrollRef    = useRef<HTMLDivElement>(null);
   const taskEls      = useRef<Map<number, HTMLDivElement>>(new Map());
   const resizeSpanRef = useRef(1);
-  const completeToggleTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   // Callback refs
   const fn = useRef({
@@ -503,13 +501,7 @@ export default function SchedulePage() {
   };
 
   const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete", taskId: number) => {
-    const pendingCompleteTimer = completeToggleTimersRef.current.get(taskId);
-
     if (action === "remove") {
-      if (pendingCompleteTimer) {
-        clearTimeout(pendingCompleteTimer);
-        completeToggleTimersRef.current.delete(taskId);
-      }
       fn.current.setTasks(prev => prev.filter(t => t.id !== taskId));
       fn.current.setResizingId(null);
       fn.current.setBadge("Đã xoá");
@@ -528,33 +520,18 @@ export default function SchedulePage() {
     }
 
     if (action === "accept") {
-      if (pendingCompleteTimer) {
-        clearTimeout(pendingCompleteTimer);
-        completeToggleTimersRef.current.delete(taskId);
-      }
       fn.current.setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "IN_PROGRESS" } : t));
       fn.current.setBadge("Đã nhận task");
       return;
     }
 
-    if (pendingCompleteTimer) {
-      clearTimeout(pendingCompleteTimer);
-      completeToggleTimersRef.current.delete(taskId);
-    }
-
-    fn.current.setBadge("Đang cập nhật...");
-    const timer = setTimeout(() => {
-      let nextStatus: TaskStatus = "DONE";
-      fn.current.setTasks(prev => prev.map(t => {
-        if (t.id !== taskId) return t;
-        nextStatus = t.status === "DONE" ? "IN_PROGRESS" : "DONE";
-        return { ...t, status: nextStatus };
-      }));
-      fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đang làm lại");
-      completeToggleTimersRef.current.delete(taskId);
-    }, COMPLETE_TOGGLE_DEBOUNCE_MS);
-
-    completeToggleTimersRef.current.set(taskId, timer);
+    let nextStatus: TaskStatus = "DONE";
+    fn.current.setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      nextStatus = t.status === "DONE" ? "IN_PROGRESS" : "DONE";
+      return { ...t, status: nextStatus };
+    }));
+    fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đang làm lại");
     return;
   };
 
@@ -778,6 +755,22 @@ export default function SchedulePage() {
         return;
       }
 
+      // Always execute pending action first to avoid dropping taps after tiny scroll jitter.
+      if (gs.current.pendingAction !== null) {
+        const action = gs.current.pendingAction;
+        const taskId = gs.current.pendingTaskId!;
+        applyTaskAction(action, taskId);
+        gs.current.pendingAction = null;
+        gs.current.pendingTaskId = null;
+        gs.current.longPressFired = false;
+        gs.current.draggingTaskId = null;
+        gs.current.touchedTaskId  = null;
+        gs.current.touchedDay     = null;
+        gs.current.touchedSlot    = null;
+        gs.current.didScroll      = false;
+        return;
+      }
+
       if (gs.current.didScroll && !gs.current.isDragging && !gs.current.isResizeDragging) {
         gs.current.longPressFired = false;
         gs.current.draggingTaskId = null;
@@ -789,16 +782,6 @@ export default function SchedulePage() {
 
       clearTimer();
       const t = e.changedTouches[0];
-
-      // ── Action button ─────────────────────────────────────────────────────
-      if (gs.current.pendingAction !== null) {
-        const action = gs.current.pendingAction;
-        const taskId = gs.current.pendingTaskId!;
-        applyTaskAction(action, taskId);
-        gs.current.pendingAction = null;
-        gs.current.pendingTaskId = null;
-        return;
-      }
 
       // ── End resize ────────────────────────────────────────────────────────
       if (gs.current.isResizeDragging && gs.current.resizeTaskId !== null) {
@@ -911,13 +894,6 @@ export default function SchedulePage() {
     const t = setTimeout(() => setBadge(null), 2500);
     return () => clearTimeout(t);
   }, [badge]);
-
-  useEffect(() => {
-    return () => {
-      completeToggleTimersRef.current.forEach((timer) => clearTimeout(timer));
-      completeToggleTimersRef.current.clear();
-    };
-  }, []);
 
   useEffect(() => {
     void loadAuthUsers();
