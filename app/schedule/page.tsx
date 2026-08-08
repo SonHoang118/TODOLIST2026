@@ -1542,7 +1542,7 @@ export default function SchedulePage() {
               <p className="text-xs text-zinc-400 mb-2">Tên công việc</p>
               <input
                 autoFocus
-                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2.5 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
                 value={editTitle}
                 onChange={e => setEditTitle(e.target.value)}
                 onKeyDown={e => {
@@ -1561,7 +1561,7 @@ export default function SchedulePage() {
               />
               <p className="text-xs text-zinc-400 mt-2 mb-1">Mô tả</p>
               <textarea
-                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60 min-h-20`}
+                className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60 min-h-20`}
                 value={editDescription}
                 onChange={e => setEditDescription(e.target.value)}
               />
@@ -1569,7 +1569,7 @@ export default function SchedulePage() {
                 <div>
                   <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
                   <input
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
                     value={editLabel}
                     onChange={e => setEditLabel(e.target.value)}
                   />
@@ -1577,7 +1577,7 @@ export default function SchedulePage() {
                 <div>
                   <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
                   <select
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-violet-500/60`}
+                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
                     value={editStatus}
                     onChange={e => setEditStatus(e.target.value as TaskStatus)}
                   >
