@@ -526,6 +526,7 @@ export default function SchedulePage() {
     lastMoveX:        0,
     lastMoveTime:     0,
     lastVx:           0,
+    lastTilt:         0,
   });
 
   const clearTimer = () => {
@@ -779,6 +780,7 @@ export default function SchedulePage() {
         gs.current.lastMoveX = t.clientX;
         gs.current.lastMoveTime = performance.now();
         gs.current.lastVx = 0;
+        gs.current.lastTilt = 0;
         setDragTiltDeg(0);
         fn.current.setLongPressedId(null);
       }
@@ -788,10 +790,15 @@ export default function SchedulePage() {
         const now = performance.now();
         const dt = Math.max(1, now - gs.current.lastMoveTime);
         const vx = (t.clientX - gs.current.lastMoveX) / dt;
-        const ax = (vx - gs.current.lastVx) / dt;
-        // Convert horizontal acceleration to visual tilt and clamp to +/-20deg.
-        const tilt = Math.max(-20, Math.min(20, ax * 2200));
-        setDragTiltDeg(tilt);
+        // Use horizontal velocity + smoothing to avoid jittery tilt on tiny finger tremors.
+        const velocityDeadzone = 0.02;
+        const targetTilt = Math.abs(vx) < velocityDeadzone
+          ? 0
+          : Math.max(-20, Math.min(20, vx * 45));
+        const tilt = gs.current.lastTilt * 0.82 + targetTilt * 0.18;
+        const finalTilt = Math.abs(tilt) < 0.6 ? 0 : tilt;
+        gs.current.lastTilt = finalTilt;
+        setDragTiltDeg(finalTilt);
         gs.current.lastMoveX = t.clientX;
         gs.current.lastMoveTime = now;
         gs.current.lastVx = vx;
