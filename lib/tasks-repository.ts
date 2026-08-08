@@ -1,6 +1,7 @@
 import { getSql } from "@/lib/neon";
 
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
+export type TaskLabel = "DEFAULT" | "PERSONAL";
 
 export interface TaskInput {
   title: string;
@@ -8,7 +9,7 @@ export interface TaskInput {
   startAt: string;
   endAt: string;
   color: string;
-  label: string;
+  label: TaskLabel;
   status: TaskStatus;
 }
 
@@ -36,6 +37,19 @@ type DbTaskRow = {
 };
 
 const VALID_STATUS = new Set<TaskStatus>(["PENDING", "IN_PROGRESS", "DONE"]);
+const DEFAULT_LABEL: TaskLabel = "DEFAULT";
+const PERSONAL_LABEL: TaskLabel = "PERSONAL";
+
+function normalizeTaskLabel(value: unknown): TaskLabel {
+  if (typeof value !== "string") return DEFAULT_LABEL;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "personal" || normalized === "việc cá nhân" || normalized === "viec ca nhan") {
+    return PERSONAL_LABEL;
+  }
+
+  return DEFAULT_LABEL;
+}
 
 export async function ensureTasksTable(): Promise<void> {
   const sql = getSql();
@@ -56,7 +70,7 @@ export async function ensureTasksTable(): Promise<void> {
   `;
 }
 
-export async function listTasksByOwner(ownerUserId: number): Promise<TaskRecord[]> {
+export async function listTasksByOwner(ownerUserId: number, actorUserId?: number): Promise<TaskRecord[]> {
   const sql = getSql();
   const rows = await sql`
     SELECT
@@ -75,6 +89,7 @@ export async function listTasksByOwner(ownerUserId: number): Promise<TaskRecord[
     FROM schedule_tasks t
     LEFT JOIN users u ON u.id = t.assigned_from_user_id
     WHERE t.owner_user_id = ${ownerUserId}
+      AND (${actorUserId ?? ownerUserId} = ${ownerUserId} OR UPPER(t.label) <> 'PERSONAL')
     ORDER BY t.start_at ASC
   `;
 
@@ -88,36 +103,55 @@ export async function replaceTasksForOwner(
 ): Promise<void> {
   const sql = getSql();
 
-  await sql`DELETE FROM schedule_tasks WHERE owner_user_id = ${ownerUserId}`;
-
   const assignedFromUserId = actorUserId === ownerUserId ? null : actorUserId;
+  const canManagePersonal = actorUserId === ownerUserId;
 
-  for (const task of tasks) {
-    validateTaskInput(task);
-    await sql`
-      INSERT INTO schedule_tasks (
-        owner_user_id,
-        title,
-        description,
-        start_at,
-        end_at,
-        bg_color,
-        label,
-        status,
-        assigned_from_user_id
-      )
-      VALUES (
-        ${ownerUserId},
-        ${task.title.trim()},
-        ${task.description.trim()},
-        ${task.startAt},
-        ${task.endAt},
-        ${task.color.trim()},
-        ${task.label.trim()},
-        ${task.status},
-        ${assignedFromUserId}
-      )
-    `;
+  await sql`BEGIN`;
+
+  try {
+    if (canManagePersonal) {
+      await sql`DELETE FROM schedule_tasks WHERE owner_user_id = ${ownerUserId}`;
+    } else {
+      await sql`
+        DELETE FROM schedule_tasks
+        WHERE owner_user_id = ${ownerUserId}
+          AND UPPER(label) <> 'PERSONAL'
+      `;
+    }
+
+    for (const task of tasks) {
+      validateTaskInput(task);
+      const normalizedLabel = canManagePersonal ? task.label : DEFAULT_LABEL;
+      await sql`
+        INSERT INTO schedule_tasks (
+          owner_user_id,
+          title,
+          description,
+          start_at,
+          end_at,
+          bg_color,
+          label,
+          status,
+          assigned_from_user_id
+        )
+        VALUES (
+          ${ownerUserId},
+          ${task.title.trim()},
+          ${task.description.trim()},
+          ${task.startAt},
+          ${task.endAt},
+          ${task.color.trim()},
+          ${normalizedLabel},
+          ${task.status},
+          ${assignedFromUserId}
+        )
+      `;
+    }
+
+    await sql`COMMIT`;
+  } catch (error) {
+    await sql`ROLLBACK`;
+    throw error;
   }
 }
 
@@ -130,6 +164,9 @@ function validateTaskInput(task: TaskInput): void {
   }
   if (!VALID_STATUS.has(task.status)) {
     throw new Error("Invalid task status.");
+  }
+  if (normalizeTaskLabel(task.label) !== task.label) {
+    throw new Error("Invalid task label.");
   }
 }
 
@@ -164,7 +201,7 @@ function toTaskRecord(row: DbTaskRow): TaskRecord {
     startAt: row.start_at,
     endAt: row.end_at,
     color: row.bg_color,
-    label: row.label,
+    label: normalizeTaskLabel(row.label),
     status: row.status,
     assignedFromUserId: row.assigned_from_user_id,
     assignedFromName: row.assigned_from_name,

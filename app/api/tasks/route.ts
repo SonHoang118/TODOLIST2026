@@ -5,6 +5,7 @@ import {
   listTasksByOwner,
   replaceTasksForOwner,
   type TaskInput,
+  type TaskLabel,
   type TaskStatus,
 } from "@/lib/tasks-repository";
 import { ensureBootstrapAdmin, ensureUsersTable } from "@/lib/users-repository";
@@ -30,12 +31,13 @@ interface TaskItemRequest {
 export async function GET(request: NextRequest) {
   try {
     const ownerUserId = parsePositiveInt(request.nextUrl.searchParams.get("ownerUserId"), "ownerUserId");
+    const actorUserId = parseOptionalPositiveInt(request.nextUrl.searchParams.get("actorUserId"));
 
     await ensureUsersTable();
     await ensureBootstrapAdmin();
     await ensureTasksTable();
 
-    const tasks = await listTasksByOwner(ownerUserId);
+    const tasks = await listTasksByOwner(ownerUserId, actorUserId ?? ownerUserId);
     return Response.json({ tasks }, { status: 200 });
   } catch (error) {
     return Response.json({ error: toErrorMessage(error, "Could not load tasks") }, { status: 400 });
@@ -54,7 +56,7 @@ export async function PUT(request: NextRequest) {
     await ensureTasksTable();
 
     await replaceTasksForOwner(ownerUserId, actorUserId, tasks);
-    const saved = await listTasksByOwner(ownerUserId);
+    const saved = await listTasksByOwner(ownerUserId, actorUserId);
 
     return Response.json({ tasks: saved }, { status: 200 });
   } catch (error) {
@@ -72,6 +74,7 @@ function parseTaskList(value: unknown): TaskInput[] {
 function parseTaskItem(value: unknown): TaskInput {
   const item = (value ?? {}) as TaskItemRequest;
   const status = parseStatus(item.status);
+  const label = parseLabel(item.label);
 
   if (typeof item.title !== "string" || item.title.trim().length === 0) {
     throw new Error("Invalid task title.");
@@ -86,7 +89,7 @@ function parseTaskItem(value: unknown): TaskInput {
     startAt: item.startAt,
     endAt: item.endAt,
     color: typeof item.color === "string" && item.color.trim().length > 0 ? item.color : "bg-violet-600",
-    label: typeof item.label === "string" ? item.label : "",
+    label,
     status,
   };
 }
@@ -96,6 +99,17 @@ function parseStatus(value: unknown): TaskStatus {
     return value;
   }
   throw new Error("Invalid task status.");
+}
+
+function parseLabel(value: unknown): TaskLabel {
+  if (typeof value !== "string") return "DEFAULT";
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "personal" || normalized === "việc cá nhân" || normalized === "viec ca nhan") {
+    return "PERSONAL";
+  }
+
+  return "DEFAULT";
 }
 
 function parseBodyUserId(value: unknown, fieldName: string): number {
@@ -110,6 +124,15 @@ function parsePositiveInt(raw: string | null, fieldName: string): number {
   const parsed = Number(raw);
   if (!raw || Number.isNaN(parsed) || parsed <= 0) {
     throw new Error(`Invalid ${fieldName}.`);
+  }
+  return parsed;
+}
+
+function parseOptionalPositiveInt(raw: string | null): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error("Invalid actorUserId.");
   }
   return parsed;
 }

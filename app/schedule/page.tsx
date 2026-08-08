@@ -111,6 +111,15 @@ interface ApiTask {
 }
 
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
+type TaskLabelValue = "DEFAULT" | "PERSONAL";
+
+const DEFAULT_TASK_LABEL: TaskLabelValue = "DEFAULT";
+const PERSONAL_TASK_LABEL: TaskLabelValue = "PERSONAL";
+
+const TASK_LABEL_TEXT: Record<TaskLabelValue, string> = {
+  DEFAULT: "Mặc định",
+  PERSONAL: "Việc cá nhân",
+};
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
   PENDING: "Đang chờ tiếp nhận",
@@ -154,6 +163,21 @@ function isTaskStatus(value: unknown): value is TaskStatus {
   return value === "PENDING" || value === "IN_PROGRESS" || value === "DONE";
 }
 
+function normalizeTaskLabel(value: unknown): TaskLabelValue {
+  if (typeof value !== "string") return DEFAULT_TASK_LABEL;
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "personal" || normalized === "việc cá nhân" || normalized === "viec ca nhan") {
+    return PERSONAL_TASK_LABEL;
+  }
+
+  return DEFAULT_TASK_LABEL;
+}
+
+function taskLabelText(value: unknown): string {
+  return TASK_LABEL_TEXT[normalizeTaskLabel(value)];
+}
+
 function sanitizeDraftTask(value: unknown): Task | null {
   const task = (value ?? {}) as Partial<Task>;
   if (
@@ -178,7 +202,7 @@ function sanitizeDraftTask(value: unknown): Task | null {
     slotIndex: task.slotIndex,
     span: Math.max(1, task.span),
     color: task.color,
-    label: task.label,
+    label: normalizeTaskLabel(task.label),
     status: task.status,
     assignedFromName: typeof task.assignedFromName === "string" ? task.assignedFromName : null,
   };
@@ -241,7 +265,7 @@ function taskToApiInput(task: Task): {
     startAt: start.toISOString(),
     endAt: end.toISOString(),
     color: task.color,
-    label: task.label,
+    label: normalizeTaskLabel(task.label),
     status: task.status,
   };
 }
@@ -261,7 +285,7 @@ function apiTaskToLocalTask(apiTask: ApiTask): Task {
     slotIndex,
     span,
     color: apiTask.color,
-    label: apiTask.label,
+    label: normalizeTaskLabel(apiTask.label),
     status: apiTask.status,
     assignedFromName: apiTask.assignedFromName,
   };
@@ -293,7 +317,7 @@ export default function SchedulePage() {
   const [editingId, setEditingId]         = useState<number | null>(null);
   const [editTitle, setEditTitle]         = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editLabel, setEditLabel]         = useState("");
+  const [editLabel, setEditLabel]         = useState<TaskLabelValue>(DEFAULT_TASK_LABEL);
   const [editStatus, setEditStatus]       = useState<TaskStatus>("PENDING");
   const [badge, setBadge]                 = useState<string | null>(null);
   const [zoomLevel, setZoomLevel]          = useState(1);
@@ -435,7 +459,7 @@ export default function SchedulePage() {
       const task = tasksRef.current.find(t => t.id === taskId);
       fn.current.setEditTitle(task?.title ?? "");
       setEditDescription(task?.description ?? "");
-      setEditLabel(task?.label ?? "");
+      setEditLabel(normalizeTaskLabel(task?.label));
       setEditStatus(task?.status ?? "PENDING");
       setReviewTaskId(null);
       fn.current.setEditingId(taskId);
@@ -715,6 +739,9 @@ export default function SchedulePage() {
             const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
               ? actorUser.name
               : null;
+            const initialLabel: TaskLabelValue = actorUser && authUserIdRef.current === actorUser.id
+              ? PERSONAL_TASK_LABEL
+              : DEFAULT_TASK_LABEL;
             const initialStatus: TaskStatus = actorUser && authUserIdRef.current === actorUser.id
               ? "IN_PROGRESS"
               : "PENDING";
@@ -727,7 +754,7 @@ export default function SchedulePage() {
               slotIndex: slot,
               span: 2,
               color,
-              label: "",
+              label: initialLabel,
               status: initialStatus,
               assignedFromName,
             }]);
@@ -827,26 +854,36 @@ export default function SchedulePage() {
   const loadTasksForViewedUser = async (ownerUserId: number) => {
     try {
       isHydratingTasksRef.current = true;
-      const response = await fetch(`/api/tasks?ownerUserId=${ownerUserId}`, { cache: "no-store" });
+      const actorUserId = sessionUserRef.current?.id;
+      const query = actorUserId
+        ? `/api/tasks?ownerUserId=${ownerUserId}&actorUserId=${actorUserId}`
+        : `/api/tasks?ownerUserId=${ownerUserId}`;
+      const response = await fetch(query, { cache: "no-store" });
       const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
       if (!response.ok || !Array.isArray(data.tasks)) {
         throw new Error(data.error ?? "Không thể tải task.");
       }
-      const remoteTasks = data.tasks.map(apiTaskToLocalTask);
+      const canViewPersonal = sessionUserRef.current?.id === ownerUserId;
+      const remoteTasks = data.tasks
+        .map(apiTaskToLocalTask)
+        .filter((task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL);
       const draft = readTaskDraft(ownerUserId);
+      const draftTasks = (draft?.tasks ?? []).filter(
+        (task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL,
+      );
 
       if (draft && !draft.synced) {
-        const draftSignature = taskSignature(draft.tasks);
+        const draftSignature = taskSignature(draftTasks);
         const remoteSignature = taskSignature(remoteTasks);
         if (draftSignature !== remoteSignature) {
-          setTasks(draft.tasks);
+          setTasks(draftTasks);
           lastSyncedSignatureRef.current = remoteSignature;
           hasPendingChangesRef.current = true;
           setBadge("Đã khôi phục thay đổi chưa đồng bộ");
 
           if (sessionUserRef.current) {
             window.setTimeout(() => {
-              void persistTasksToServer(draft.tasks, { showBadge: true });
+              void persistTasksToServer(draftTasks, { showBadge: true });
             }, 0);
           }
           return;
@@ -1187,8 +1224,11 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
+                const canToggleDone = isViewingOwnSchedule && (isInProgress || isDone);
                 const taskBgClass = resolveTaskBgClass(task.color, isDark);
-                const subtitleText = task.label ? `#${task.label}` : "";
+                const subtitleText = normalizeTaskLabel(task.label) === PERSONAL_TASK_LABEL
+                  ? TASK_LABEL_TEXT.PERSONAL
+                  : "";
                 const h = task.span * effSlotH;
 
                 return (
@@ -1218,13 +1258,13 @@ export default function SchedulePage() {
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
-                    {isViewingOwnSchedule && (isInProgress || isDone) && (
+                    {canToggleDone && (
                       <button
                         type="button"
                         data-action="complete"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("complete", task.id)}
-                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        className={`absolute top-1 left-1 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center z-10 backdrop-blur-sm ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
@@ -1232,9 +1272,9 @@ export default function SchedulePage() {
                       </button>
                     )}
 
-                    <div className="flex items-start gap-1 pl-6">
+                    <div className={`flex h-full min-h-0 flex-col ${canToggleDone ? "pl-6" : "pl-0"} ${isResizing ? "pr-12" : "pr-0"}`}>
                       <p
-                        className={`text-[11px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
+                        className={`text-[11.5px] font-semibold leading-tight text-white ${isDone ? "line-through opacity-80" : ""}`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1244,36 +1284,34 @@ export default function SchedulePage() {
                       >
                         {task.title}
                       </p>
+
+                      {task.description.trim() && (
+                        <p
+                          className="mt-1 text-[9px] leading-snug text-white/80"
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {task.description}
+                        </p>
+                      )}
+
+                      <div className="mt-auto pt-1 flex flex-wrap items-center gap-1">
+                        {subtitleText && (
+                          <span className="rounded-md border border-white/35 bg-black/20 px-1.5 py-0.5 text-[8.5px] font-medium text-white/90">
+                            {subtitleText}
+                          </span>
+                        )}
+                        {task.assignedFromName && (
+                          <span className="max-w-full truncate rounded-md border border-white/25 bg-black/15 px-1.5 py-0.5 text-[8.5px] text-white/75">
+                            Từ: {task.assignedFromName}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {task.description.trim() && (
-                      <p
-                        className="text-white/80 text-[9px]"
-                        style={{
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {task.description}
-                      </p>
-                    )}
-                    {subtitleText && (
-                      <p
-                        className="text-white/75 text-[9px]"
-                        style={{
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {subtitleText}
-                      </p>
-                    )}
-                    {task.assignedFromName && (
-                      <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
-                    )}
 
                     {isPending && (
                       isViewingOwnSchedule ? (
@@ -1282,7 +1320,7 @@ export default function SchedulePage() {
                           data-action="accept"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("accept", task.id)}
-                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/90 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
                         >
                           Nhận
                         </button>
@@ -1524,7 +1562,7 @@ export default function SchedulePage() {
                 </div>
                 <div className="rounded-xl bg-black/25 px-3 py-2">
                   <p className="text-[11px] text-white/70">Nhãn</p>
-                  <p className="mt-0.5 text-sm wrap-break-word text-white">{task.label.trim() ? `#${task.label}` : "Không có"}</p>
+                  <p className="mt-0.5 text-sm wrap-break-word text-white">{taskLabelText(task.label)}</p>
                 </div>
                 <div className="rounded-xl bg-black/25 px-3 py-2">
                   <p className="text-[11px] text-white/70">Trạng thái</p>
@@ -1597,7 +1635,7 @@ export default function SchedulePage() {
                       ...t,
                       title: editTitle.trim() || t.title,
                       description: editDescription,
-                      label: editLabel,
+                      label: normalizeTaskLabel(editLabel),
                       status: editStatus,
                     } : t));
                     setEditingId(null);
@@ -1614,11 +1652,14 @@ export default function SchedulePage() {
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
                   <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
-                  <input
+                  <select
                     className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
                     value={editLabel}
-                    onChange={e => setEditLabel(e.target.value)}
-                  />
+                    onChange={e => setEditLabel(normalizeTaskLabel(e.target.value))}
+                  >
+                    <option value={DEFAULT_TASK_LABEL}>{TASK_LABEL_TEXT.DEFAULT}</option>
+                    <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
+                  </select>
                 </div>
                 <div>
                   <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
@@ -1644,7 +1685,7 @@ export default function SchedulePage() {
                       ...t,
                       title: editTitle.trim() || t.title,
                       description: editDescription,
-                      label: editLabel,
+                      label: normalizeTaskLabel(editLabel),
                       status: editStatus,
                     } : t));
                     setEditingId(null);
