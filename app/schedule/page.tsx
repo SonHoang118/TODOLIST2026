@@ -21,6 +21,8 @@ const COLORS = [
   "bg-pink-600",   "bg-cyan-600",    "bg-lime-600",   "bg-fuchsia-600",
 ];
 
+const DEFAULT_TASK_BG = "bg-zinc-700";
+
 const DAY_SHORT = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 // Infinite-scroll constants
@@ -689,7 +691,7 @@ export default function SchedulePage() {
             const day   = gs.current.touchedDay;
             const slot  = gs.current.touchedSlot;
             const id    = fn.current.nextId();
-            const color = fn.current.nextColor();
+            const color = DEFAULT_TASK_BG;
             const ownerName = usersForAuthRef.current.find((u) => u.id === authUserIdRef.current)?.name ?? null;
             const actorUser = sessionUserRef.current;
             const assignedFromName = actorUser && ownerName && actorUser.name !== ownerName
@@ -985,10 +987,9 @@ export default function SchedulePage() {
     setBadge("Đã reset về hôm nay");
   };
 
-  // Reset tasks when toggling scroll mode to avoid column-index confusion
+  // Keep tasks when toggling scroll mode; positions are already anchored by absDay.
   const handleToggleInfiniteScroll = () => {
     setInfiniteScroll(v => !v);
-    setTasks([]);
     setResizingId(null);
   };
 
@@ -1164,6 +1165,7 @@ export default function SchedulePage() {
                 const isPending = task.status === "PENDING";
                 const isInProgress = task.status === "IN_PROGRESS";
                 const isDone = task.status === "DONE";
+                const subtitleText = task.label ? `#${task.label}` : STATUS_LABEL[task.status];
                 const h = task.span * effSlotH;
 
                 return (
@@ -1189,7 +1191,7 @@ export default function SchedulePage() {
                       ${isDraggingThis ? "opacity-30 scale-[0.93]" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
-                      ${isDone ? "bg-emerald-700/80 border border-emerald-300/70" : ""}
+                      ${isDone ? `${DEFAULT_TASK_BG} border border-zinc-300/70` : ""}
                       ${isPending ? "border border-dashed border-white/60 bg-black/20" : ""}`}
                     style={{ borderRadius: 8 }}
                   >
@@ -1207,17 +1209,30 @@ export default function SchedulePage() {
                       </button>
                     )}
 
-                    <div className="flex items-center gap-1 pl-6">
-                      <p className={`text-[10px] font-semibold leading-tight truncate flex-1 text-white ${isDone ? "line-through" : ""}`}>
+                    <div className="flex items-start gap-1 pl-6">
+                      <p
+                        className={`text-[10px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
+                        style={{
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }}
+                      >
                         {task.title}
                       </p>
                     </div>
-                    {task.label && <p className="text-white/70 text-[9px] truncate">#{task.label}</p>}
-                    <p className="text-white/70 text-[9px] truncate">{STATUS_LABEL[task.status]}</p>
-                    <p className="text-white/50 text-[9px] tabular-nums">{slotLabel(task.slotIndex)}</p>
-                    {task.span > 1 && (
-                      <p className="text-white/40 text-[9px] tabular-nums">→ {slotLabel(task.slotIndex + task.span)}</p>
-                    )}
+                    <p
+                      className="text-white/75 text-[9px]"
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {subtitleText}
+                    </p>
                     {task.assignedFromName && (
                       <p className="text-white/55 text-[9px] truncate">Được giao từ: {task.assignedFromName}</p>
                     )}
@@ -1229,12 +1244,12 @@ export default function SchedulePage() {
                           data-action="accept"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("accept", task.id)}
-                          className="mt-1 w-fit rounded-md border border-white/45 px-1.5 py-0.5 text-[9px] font-medium text-white/90"
+                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
                         >
                           Nhận
                         </button>
                       ) : (
-                        <p className="mt-1 text-[9px] text-white/60">Đang chờ</p>
+                        <p className="absolute bottom-1 right-1 rounded-md border border-white/40 bg-black/45 px-2 py-0.5 text-[9px] font-semibold text-white/90 shadow-sm">Đang chờ</p>
                       )
                     )}
 
