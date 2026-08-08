@@ -113,8 +113,102 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 };
 
 const AUTH_STORAGE_KEY = "todo2026.currentUser";
+const TASK_DRAFT_STORAGE_PREFIX = "todo2026.tasksDraft";
 
 const SLOT_MS = 30 * 60 * 1000;
+
+interface LocalTaskDraft {
+  updatedAt: number;
+  synced: boolean;
+  tasks: Task[];
+}
+
+function taskDraftStorageKey(ownerUserId: number): string {
+  return `${TASK_DRAFT_STORAGE_PREFIX}.${ownerUserId}`;
+}
+
+function taskSignature(tasks: Task[]): string {
+  return JSON.stringify(
+    tasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      absDay: task.absDay,
+      slotIndex: task.slotIndex,
+      span: task.span,
+      color: task.color,
+      label: task.label,
+      status: task.status,
+      assignedFromName: task.assignedFromName,
+    })),
+  );
+}
+
+function isTaskStatus(value: unknown): value is TaskStatus {
+  return value === "PENDING" || value === "IN_PROGRESS" || value === "DONE";
+}
+
+function sanitizeDraftTask(value: unknown): Task | null {
+  const task = (value ?? {}) as Partial<Task>;
+  if (
+    typeof task.id !== "number" ||
+    typeof task.title !== "string" ||
+    typeof task.description !== "string" ||
+    typeof task.absDay !== "number" ||
+    typeof task.slotIndex !== "number" ||
+    typeof task.span !== "number" ||
+    typeof task.color !== "string" ||
+    typeof task.label !== "string" ||
+    !isTaskStatus(task.status)
+  ) {
+    return null;
+  }
+
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    absDay: task.absDay,
+    slotIndex: task.slotIndex,
+    span: Math.max(1, task.span),
+    color: task.color,
+    label: task.label,
+    status: task.status,
+    assignedFromName: typeof task.assignedFromName === "string" ? task.assignedFromName : null,
+  };
+}
+
+function readTaskDraft(ownerUserId: number): LocalTaskDraft | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(taskDraftStorageKey(ownerUserId));
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as { updatedAt?: unknown; synced?: unknown; tasks?: unknown };
+    if (!Array.isArray(parsed.tasks)) return null;
+    const tasks = parsed.tasks
+      .map((item) => sanitizeDraftTask(item))
+      .filter((item): item is Task => item !== null);
+
+    return {
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+      synced: parsed.synced === true,
+      tasks,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeTaskDraft(ownerUserId: number, tasks: Task[], synced: boolean): void {
+  if (typeof window === "undefined") return;
+  const payload: LocalTaskDraft = {
+    updatedAt: Date.now(),
+    synced,
+    tasks,
+  };
+  window.localStorage.setItem(taskDraftStorageKey(ownerUserId), JSON.stringify(payload));
+}
 
 function buildDateFromAbsDayAndSlot(absDay: number, slotIndex: number): Date {
   const date = absDayToDate(absDay);
@@ -196,6 +290,8 @@ export default function SchedulePage() {
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
   const authUserIdRef                      = useRef<number | null>(null);
+  const lastSyncedSignatureRef             = useRef("");
+  const hasPendingChangesRef               = useRef(false);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -618,6 +714,44 @@ export default function SchedulePage() {
     }
   };
 
+  const persistTasksToServer = async (
+    tasksToSave: Task[],
+    options?: { showBadge?: boolean; keepalive?: boolean },
+  ) => {
+    if (!authUserId || !sessionUser || isHydratingTasksRef.current) return;
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerUserId: authUserId,
+          actorUserId: sessionUser.id,
+          tasks: tasksToSave.map(taskToApiInput),
+        }),
+        keepalive: options?.keepalive,
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error ?? "Không thể lưu task.");
+      }
+
+      setAuthError(null);
+      if (options?.showBadge) {
+        setBadge("Đã tự lưu");
+      }
+      lastSyncedSignatureRef.current = taskSignature(tasksToSave);
+      hasPendingChangesRef.current = false;
+      writeTaskDraft(authUserId, tasksToSave, true);
+    } catch (error) {
+      hasPendingChangesRef.current = true;
+      writeTaskDraft(authUserId, tasksToSave, false);
+      if (!options?.keepalive) {
+        setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
+      }
+    }
+  };
+
   const loadTasksForViewedUser = async (ownerUserId: number) => {
     try {
       isHydratingTasksRef.current = true;
@@ -626,10 +760,36 @@ export default function SchedulePage() {
       if (!response.ok || !Array.isArray(data.tasks)) {
         throw new Error(data.error ?? "Không thể tải task.");
       }
-      setTasks(data.tasks.map(apiTaskToLocalTask));
+      const remoteTasks = data.tasks.map(apiTaskToLocalTask);
+      const draft = readTaskDraft(ownerUserId);
+
+      if (draft && !draft.synced) {
+        const draftSignature = taskSignature(draft.tasks);
+        const remoteSignature = taskSignature(remoteTasks);
+        if (draftSignature !== remoteSignature) {
+          setTasks(draft.tasks);
+          lastSyncedSignatureRef.current = remoteSignature;
+          hasPendingChangesRef.current = true;
+          setBadge("Đã khôi phục thay đổi chưa đồng bộ");
+
+          if (sessionUserRef.current) {
+            window.setTimeout(() => {
+              void persistTasksToServer(draft.tasks, { showBadge: true });
+            }, 0);
+          }
+          return;
+        }
+      }
+
+      setTasks(remoteTasks);
+      lastSyncedSignatureRef.current = taskSignature(remoteTasks);
+      hasPendingChangesRef.current = false;
+      writeTaskDraft(ownerUserId, remoteTasks, true);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Không thể tải task.");
       setTasks([]);
+      lastSyncedSignatureRef.current = "";
+      hasPendingChangesRef.current = false;
     } finally {
       window.setTimeout(() => {
         isHydratingTasksRef.current = false;
@@ -651,32 +811,63 @@ export default function SchedulePage() {
   }, [authUserId]);
 
   useEffect(() => {
-    if (!authUserId || !sessionUser || isHydratingTasksRef.current) return;
+    if (!authUserId || isHydratingTasksRef.current) return;
+    const signature = taskSignature(tasks);
+    const isSynced = signature === lastSyncedSignatureRef.current;
+    hasPendingChangesRef.current = !isSynced;
+    writeTaskDraft(authUserId, tasks, isSynced);
+  }, [tasks, authUserId]);
 
+  useEffect(() => {
+    if (!authUserId || !sessionUser || isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
+
+    const snapshot = tasks;
     const t = setTimeout(async () => {
-      try {
-        setAuthError(null);
-        const response = await fetch("/api/tasks", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ownerUserId: authUserId,
-            actorUserId: sessionUser.id,
-            tasks: tasks.map(taskToApiInput),
-          }),
-        });
-        const data = (await response.json()) as { error?: string };
-        if (!response.ok) {
-          throw new Error(data.error ?? "Không thể lưu task.");
-        }
-        setBadge("Đã tự lưu");
-      } catch (error) {
-        setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
-      }
+      await persistTasksToServer(snapshot, { showBadge: true });
     }, 15000);
 
     return () => clearTimeout(t);
   }, [tasks, authUserId, sessionUser]);
+
+  useEffect(() => {
+    const flushPendingTasks = () => {
+      if (isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
+
+      const ownerUserId = authUserIdRef.current;
+      const actorUser = sessionUserRef.current;
+      if (!ownerUserId || !actorUser) return;
+
+      const snapshot = tasksRef.current;
+      writeTaskDraft(ownerUserId, snapshot, false);
+
+      void fetch("/api/tasks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerUserId,
+          actorUserId: actorUser.id,
+          tasks: snapshot.map(taskToApiInput),
+        }),
+        keepalive: true,
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPendingTasks();
+      }
+    };
+
+    window.addEventListener("beforeunload", flushPendingTasks);
+    window.addEventListener("pagehide", flushPendingTasks);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("beforeunload", flushPendingTasks);
+      window.removeEventListener("pagehide", flushPendingTasks);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
 
   const handleAvatarPick = () => {
     if (!sessionUser) return;
