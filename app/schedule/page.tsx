@@ -589,6 +589,10 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
+  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
+  const [isInteractionLocked, setIsInteractionLocked] = useState(true);
+  const [isTaskEntranceActive, setIsTaskEntranceActive] = useState(false);
+  const [isTaskExitActive, setIsTaskExitActive] = useState(false);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
   const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
@@ -606,11 +610,18 @@ export default function SchedulePage() {
   const tasksCacheRef                      = useRef<Map<string, TaskCacheEntry>>(new Map());
   const loadTasksAbortRef                  = useRef<AbortController | null>(null);
   const loadTasksRequestIdRef              = useRef(0);
+  const loadingStartedAtRef                = useRef<number | null>(null);
+  const loadingRequestIdRef                = useRef<number | null>(null);
+  const interactionLockedRef               = useRef(true);
+  const interactionUnlockTimerRef          = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taskEntranceTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taskExitTimerRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
   authUserIdRef.current = authUserId;
   scheduleScopeRef.current = scheduleScope;
+  interactionLockedRef.current = isInteractionLocked;
   isViewingOwnScheduleRef.current = scheduleScope !== "COMPANY" && sessionUser !== null && authUserId === sessionUser.id;
 
   // Effective slot height — derived from zoom, mirrored in a ref for imperative handlers
@@ -728,6 +739,58 @@ export default function SchedulePage() {
     if (gs.current.timer) { clearTimeout(gs.current.timer); gs.current.timer = null; }
   };
 
+  const triggerTaskEntranceAnimation = () => {
+    if (taskEntranceTimerRef.current) {
+      clearTimeout(taskEntranceTimerRef.current);
+      taskEntranceTimerRef.current = null;
+    }
+
+    setIsTaskEntranceActive(true);
+    taskEntranceTimerRef.current = setTimeout(() => {
+      setIsTaskEntranceActive(false);
+      taskEntranceTimerRef.current = null;
+    }, 700);
+  };
+
+  const triggerTaskExitAnimation = (onComplete: () => void) => {
+    if (taskExitTimerRef.current) {
+      clearTimeout(taskExitTimerRef.current);
+      taskExitTimerRef.current = null;
+    }
+    if (taskEntranceTimerRef.current) {
+      clearTimeout(taskEntranceTimerRef.current);
+      taskEntranceTimerRef.current = null;
+    }
+
+    lockInteractions();
+    setIsTaskEntranceActive(false);
+    setIsTaskExitActive(true);
+
+    taskExitTimerRef.current = setTimeout(() => {
+      setIsTaskExitActive(false);
+      taskExitTimerRef.current = null;
+      onComplete();
+    }, 180);
+  };
+
+  const lockInteractions = () => {
+    if (interactionUnlockTimerRef.current) {
+      clearTimeout(interactionUnlockTimerRef.current);
+      interactionUnlockTimerRef.current = null;
+    }
+    setIsInteractionLocked(true);
+  };
+
+  const unlockInteractionsAfter = (delayMs: number) => {
+    if (interactionUnlockTimerRef.current) {
+      clearTimeout(interactionUnlockTimerRef.current);
+    }
+    interactionUnlockTimerRef.current = setTimeout(() => {
+      setIsInteractionLocked(false);
+      interactionUnlockTimerRef.current = null;
+    }, Math.max(0, delayMs));
+  };
+
   const patchTask = (taskId: number, patch: Partial<Task>) => {
     fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId ? withTaskAudit({ ...t, ...patch }, sessionUserRef.current) : t)));
   };
@@ -813,6 +876,12 @@ export default function SchedulePage() {
     container.scrollTop = Math.max(0, (now.getHours() * 2 - 3) * effSlotHRef.current);
 
     const onStart = (e: TouchEvent) => {
+      if (interactionLockedRef.current) {
+        e.preventDefault();
+        clearTimer();
+        return;
+      }
+
       const t  = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
 
@@ -1186,6 +1255,21 @@ export default function SchedulePage() {
   }, [badge]);
 
   useEffect(() => {
+    return () => {
+      if (interactionUnlockTimerRef.current) {
+        clearTimeout(interactionUnlockTimerRef.current);
+      }
+      if (taskEntranceTimerRef.current) {
+        clearTimeout(taskEntranceTimerRef.current);
+      }
+      if (taskExitTimerRef.current) {
+        clearTimeout(taskExitTimerRef.current);
+      }
+      loadTasksAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     void loadAuthUsers();
   }, []);
 
@@ -1254,6 +1338,8 @@ export default function SchedulePage() {
     const requestId = ++loadTasksRequestIdRef.current;
     try {
       isHydratingTasksRef.current = true;
+      lockInteractions();
+      setIsTaskExitActive(false);
       const actorUserId = sessionUserRef.current?.id;
       const scope = scheduleScopeRef.current;
       const ownerUserId = authUserIdRef.current;
@@ -1272,6 +1358,14 @@ export default function SchedulePage() {
       }
 
       const shouldRefresh = !cached || (Date.now() - cached.fetchedAt) > TASK_CACHE_TTL_MS;
+      const shouldShowLoading = !cached;
+
+      if (shouldShowLoading) {
+        loadingStartedAtRef.current = Date.now();
+        loadingRequestIdRef.current = requestId;
+        setIsScheduleLoading(true);
+      }
+
       if (!shouldRefresh) {
         return;
       }
@@ -1308,6 +1402,7 @@ export default function SchedulePage() {
 
       if (remoteTasks.length === 0 && draftTasks.length > 0) {
         setTasks(draftTasks);
+        triggerTaskEntranceAnimation();
         taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
         lastSyncedSignatureRef.current = taskSignature(remoteTasks);
         hasPendingChangesRef.current = true;
@@ -1331,6 +1426,7 @@ export default function SchedulePage() {
         const remoteSignature = taskSignature(remoteTasks);
         if (draftSignature !== remoteSignature) {
           setTasks(draftTasks);
+          triggerTaskEntranceAnimation();
           taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
           lastSyncedSignatureRef.current = remoteSignature;
           hasPendingChangesRef.current = true;
@@ -1351,6 +1447,7 @@ export default function SchedulePage() {
       }
 
       setTasks(remoteTasks);
+      triggerTaskEntranceAnimation();
       taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
       lastSyncedSignatureRef.current = taskSignature(remoteTasks);
       hasPendingChangesRef.current = false;
@@ -1378,6 +1475,26 @@ export default function SchedulePage() {
     } finally {
       if (requestId !== loadTasksRequestIdRef.current) return;
       loadTasksAbortRef.current = null;
+
+      if (loadingRequestIdRef.current === requestId) {
+        const startedAt = loadingStartedAtRef.current ?? Date.now();
+        const elapsed = Date.now() - startedAt;
+        const minVisibleMs = 320;
+        const delay = Math.max(0, minVisibleMs - elapsed);
+
+        window.setTimeout(() => {
+          if (loadingRequestIdRef.current !== requestId) return;
+          setIsScheduleLoading(false);
+          loadingStartedAtRef.current = null;
+          loadingRequestIdRef.current = null;
+
+          // Keep a tiny safety lock so fast touch events don't create accidental tasks.
+          unlockInteractionsAfter(180);
+        }, delay);
+      } else {
+        unlockInteractionsAfter(120);
+      }
+
       window.setTimeout(() => {
         isHydratingTasksRef.current = false;
       }, 0);
@@ -1385,7 +1502,15 @@ export default function SchedulePage() {
   };
 
   const handleViewUserChange = (nextUserId: number) => {
-    setAuthUserId(nextUserId);
+    if (nextUserId === authUserIdRef.current) return;
+
+    triggerTaskExitAnimation(() => {
+      setAuthUserId(nextUserId);
+      setResizingId(null);
+      setReviewTaskId(null);
+      setEditingId(null);
+    });
+
     const selected = usersForAuth.find((u) => u.id === nextUserId);
     if (selected) {
       setBadge(`Đang xem lịch của ${selected.name}`);
@@ -1393,10 +1518,15 @@ export default function SchedulePage() {
   };
 
   const handleScheduleScopeChange = (nextScope: ScheduleScope) => {
-    setScheduleScope(nextScope);
-    setResizingId(null);
-    setReviewTaskId(null);
-    setEditingId(null);
+    if (nextScope === scheduleScopeRef.current) return;
+
+    triggerTaskExitAnimation(() => {
+      setScheduleScope(nextScope);
+      setResizingId(null);
+      setReviewTaskId(null);
+      setEditingId(null);
+    });
+
     setBadge(nextScope === "COMPANY" ? "Đang xem lịch công ty" : "Đang xem lịch cá nhân");
   };
 
@@ -1547,6 +1677,7 @@ export default function SchedulePage() {
     ? { backgroundColor: draggingTask.color }
     : undefined;
   const isViewingOwnSchedule = !isCompanySchedule && sessionUser !== null && authUserId === sessionUser.id;
+  const isUiLocked = isScheduleLoading || isInteractionLocked;
 
   const handleResetInfiniteView = () => {
     const c = scrollRef.current;
@@ -1636,12 +1767,13 @@ export default function SchedulePage() {
       </header>
 
       {/* ── Main scrollable area ─────────────────────────────────────────── */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto"
-        style={{ touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}
-      >
-        <div style={{ width: TIME_W + colCount * dayWidth }}>
+      <div className="relative flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          className={`h-full overflow-auto ${isUiLocked ? "pointer-events-none" : ""}`}
+          style={{ touchAction: "pan-x pan-y", overscrollBehavior: "contain" }}
+        >
+          <div style={{ width: TIME_W + colCount * dayWidth }}>
 
           {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
@@ -1732,7 +1864,7 @@ export default function SchedulePage() {
               )}
 
               {/* Task blocks */}
-              {tasks.map(task => {
+              {tasks.map((task, taskIndex) => {
                 const colIdx = task.absDay - viewStartAbsDay;
                 if (colIdx < 0 || colIdx >= colCount) return null; // outside current view
                 const isDraggingThis = draggingId    === task.id;
@@ -1796,12 +1928,18 @@ export default function SchedulePage() {
                   ? "self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
                   : "self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
 
+                const taskAnimationClass = isTaskExitActive
+                  ? "schedule-task-exit"
+                  : isTaskEntranceActive
+                  ? "schedule-task-enter"
+                  : "";
+
                 return (
                   <div
                     key={task.id}
                     ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
                     data-task-id={task.id}
-                    className="absolute overflow-hidden"
+                    className={`absolute overflow-hidden ${taskAnimationClass}`}
                     style={{
                       left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
@@ -1810,6 +1948,12 @@ export default function SchedulePage() {
                       borderRadius: 8,
                       zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
                       transition: gs.current.isResizeDragging ? "none" : "height 0.15s ease",
+                      animationDelay: taskAnimationClass === "schedule-task-enter"
+                        ? `${Math.min(taskIndex * 28, 280)}ms`
+                        : taskAnimationClass === "schedule-task-exit"
+                        ? `${Math.min(taskIndex * 12, 120)}ms`
+                        : undefined,
+                      animationFillMode: taskAnimationClass ? "both" : undefined,
                       touchAction: "pan-x pan-y", // allow scrolling even when touch starts on a task
                   }}
                 >
@@ -2001,8 +2145,49 @@ export default function SchedulePage() {
               )}
             </div>{/* end grid */}
           </div>{/* end body row */}
-        </div>{/* end content wrapper */}
-      </div>{/* end scrollRef */}
+          </div>{/* end content wrapper */}
+        </div>{/* end scrollRef */}
+
+        <div
+          className={`absolute inset-0 z-40 transition-opacity duration-300 ${isUiLocked ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+          aria-hidden={!isUiLocked}
+        >
+          <div className={`absolute inset-0 ${isScheduleLoading ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
+          <div className="absolute -left-10 top-[22%] h-36 w-36 rounded-full bg-violet-500/25 blur-3xl animate-pulse" />
+          <div className="absolute -right-8 top-[38%] h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
+
+          <div className="absolute inset-0 flex items-center justify-center px-4">
+            <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-zinc-900/75 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+              <div className="flex items-center gap-3">
+                <div className="relative h-9 w-9 shrink-0">
+                  <div className="absolute inset-0 rounded-full border border-white/20" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-300 border-r-sky-300 animate-spin" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">
+                    {isScheduleLoading
+                      ? (scheduleScope === "COMPANY" ? "Đang tải lịch công ty" : "Đang tải lịch cá nhân")
+                      : "Đang sẵn sàng để thao tác"}
+                  </p>
+                  <p className="text-[11px] text-zinc-300">
+                    {isScheduleLoading
+                      ? "Đồng bộ dữ liệu và dựng timeline..."
+                      : "Hoàn tất dựng giao diện, khóa chạm nhanh trong giây lát..."}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div className="h-full w-1/2 rounded-full bg-gradient-to-r from-violet-300/80 via-cyan-300/80 to-emerald-300/80 animate-pulse" />
+                </div>
+                <div className="h-2 w-4/5 rounded-full bg-white/10 animate-pulse" />
+                <div className="h-2 w-2/3 rounded-full bg-white/10 animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Drag ghost ───────────────────────────────────────────────────── */}
       {draggingTask && (
