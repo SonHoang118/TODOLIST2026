@@ -209,10 +209,14 @@ export async function replaceTasksForScope(
     ? null
     : actorUserId;
   const canManagePersonal = !isCompanyScope && ownerUserId !== null && actorUserId === ownerUserId;
+  const lockKey = isCompanyScope ? 91_000_001 : 92_000_000 + Number(ownerUserId ?? 0);
 
   await sql`BEGIN`;
 
   try {
+    // Serialize full-replace writes per scope to prevent concurrent delete/insert races.
+    await sql`SELECT pg_advisory_xact_lock(${lockKey})`;
+
     if (isCompanyScope) {
       await sql`DELETE FROM schedule_tasks WHERE schedule_scope = 'COMPANY'`;
     } else if (canManagePersonal) {
@@ -233,7 +237,7 @@ export async function replaceTasksForScope(
     for (const task of tasks) {
       validateTaskInput(task);
       const normalizedLabel = canManagePersonal ? task.label : DEFAULT_LABEL;
-      const confirmedByUserIds = normalizeConfirmedUserIds(task.confirmedByUserIds, actorUserId);
+      const confirmedByUserIds = normalizeConfirmedUserIds(task.confirmedByUserIds);
       const createdByUserId = isCompanyScope ? (task.createdByUserId ?? actorUserId) : null;
       const updatedByUserId = isCompanyScope ? (task.updatedByUserId ?? actorUserId) : null;
       const assignedBy = task.assignedFromUserId ?? assignedFromUserId;
@@ -293,10 +297,10 @@ function validateTaskInput(task: TaskInput): void {
   }
 }
 
-function normalizeConfirmedUserIds(value: number[] | undefined, actorUserId: number): number[] {
+function normalizeConfirmedUserIds(value: number[] | undefined): number[] {
   const raw = Array.isArray(value) ? value : [];
-  const merged = new Set<number>([...raw, actorUserId]);
-  return Array.from(merged).filter((id) => Number.isFinite(id) && id > 0);
+  const unique = new Set<number>(raw);
+  return Array.from(unique).filter((id) => Number.isFinite(id) && id > 0);
 }
 
 function toDbTaskRow(row: Record<string, unknown>): DbTaskRow {

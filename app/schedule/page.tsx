@@ -1270,6 +1270,21 @@ export default function SchedulePage() {
         (task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL,
       ));
 
+      if (remoteTasks.length === 0 && draftTasks.length > 0) {
+        setTasks(draftTasks);
+        taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
+        lastSyncedSignatureRef.current = taskSignature(remoteTasks);
+        hasPendingChangesRef.current = true;
+        setBadge("Đã khôi phục task từ bản nháp cục bộ");
+
+        if (sessionUserRef.current) {
+          window.setTimeout(() => {
+            void persistTasksToServer(draftTasks, { showBadge: true });
+          }, 0);
+        }
+        return;
+      }
+
       if (draft && !draft.synced) {
         const draftSignature = taskSignature(draftTasks);
         const remoteSignature = taskSignature(remoteTasks);
@@ -1696,12 +1711,16 @@ export default function SchedulePage() {
                 const titleTextClass = isUltraCompactCard ? "text-[10px] leading-[1.1]" : isCompactCard ? "text-[11px] leading-tight" : "text-[12px] leading-tight";
                 const checkboxSizeClass = isUltraCompactCard ? "h-5 w-5" : "h-6 w-6";
                 const checkboxOffsetClass = isUltraCompactCard ? "pl-5" : "pl-6";
-                const showDescription = Boolean(task.description.trim()) && h >= (isUltraCompactCard ? 76 : 58);
-                const showSubtitle = Boolean(subtitleText) && h >= (isUltraCompactCard ? 90 : 66);
-                const showCompanyMeta = h >= (isUltraCompactCard ? 64 : 54);
+                const showDescription = Boolean(task.description.trim())
+                  && h >= (isUltraCompactCard ? 76 : 58)
+                  && (!isCompanySchedule || h >= 100);
+                const showSubtitle = Boolean(subtitleText)
+                  && h >= (isUltraCompactCard ? 90 : 66)
+                  && (!isCompanySchedule || h >= 100);
+                const showCompanyMeta = h >= 100;
                 const actionButtonClass = isUltraCompactCard
-                  ? "mt-1 self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
-                  : "mt-1 self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
+                  ? "mt-auto self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
+                  : "mt-auto self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
 
                 return (
                   <div
@@ -1806,7 +1825,7 @@ export default function SchedulePage() {
                     )}
 
                     {isCompanySchedule && confirmerUsers.length > 0 && showCompanyMeta && (
-                      <div className={`mt-auto flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate`}>
+                      <div className={`mt-1 flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate`}>
                         <span>xác nhận:</span>
                         <div className="flex items-center">
                           {displayedConfirmerUsers.map((user, idx) => (
