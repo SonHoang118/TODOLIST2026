@@ -421,21 +421,31 @@ function withTaskConfirmOnly(task: Task, actor: SessionUser | null): Task {
   };
 }
 
-function renderSmallAvatar(name: string | null, avatar: string | null, fallbackSeed?: number | null) {
+function renderSmallAvatar(
+  name: string | null,
+  avatar: string | null,
+  fallbackSeed?: number | null,
+  size: "xs" | "sm" | "md" = "sm",
+) {
   const label = (name?.trim().charAt(0) || (fallbackSeed ? String(fallbackSeed).charAt(0) : "?")).toUpperCase();
+  const sizeClass = size === "xs"
+    ? "h-3.5 w-3.5 text-[7px]"
+    : size === "md"
+    ? "h-5 w-5 text-[9px]"
+    : "h-4 w-4 text-[8px]";
 
   if (avatar) {
     return (
       <img
         src={avatar}
         alt={name ?? "avatar"}
-        className="h-4 w-4 rounded-full object-cover border border-white/40 shrink-0"
+        className={`${sizeClass} rounded-full object-cover border border-white/40 shrink-0`}
       />
     );
   }
 
   return (
-    <div className="h-4 w-4 rounded-full bg-zinc-700 text-white text-[8px] font-semibold flex items-center justify-center border border-white/40 shrink-0">
+    <div className={`${sizeClass} rounded-full bg-zinc-700 text-white font-semibold flex items-center justify-center border border-white/40 shrink-0`}>
       {label}
     </div>
   );
@@ -1652,6 +1662,12 @@ export default function SchedulePage() {
                 const confirmerUsers = task.confirmedByUserIds
                   .map((id) => usersForAuth.find((user) => user.id === id))
                   .filter((user): user is SessionUser => Boolean(user));
+                const displayedConfirmerUsers = confirmerUsers.length > 3
+                  ? confirmerUsers.slice(0, 2)
+                  : confirmerUsers.slice(0, 3);
+                const hiddenConfirmerCount = confirmerUsers.length > 3
+                  ? confirmerUsers.length - 2
+                  : 0;
                 const taskBgClass = isDone
                   ? ""
                   : isHexColor(task.color)
@@ -1665,6 +1681,21 @@ export default function SchedulePage() {
                   : "";
                 const subtitleText = subtitleLabel ? `#${subtitleLabel}` : "";
                 const h = task.span * effSlotH;
+                const cardW = dayWidth - 4;
+                const isUltraCompactCard = cardW < 84 || h < 54;
+                const isCompactCard = !isUltraCompactCard && (cardW < 104 || h < 84);
+                const avatarSize: "xs" | "sm" | "md" = isUltraCompactCard ? "xs" : isCompactCard ? "sm" : "md";
+                const bodyPaddingClass = isUltraCompactCard ? "p-1" : isCompactCard ? "p-1.5" : "p-2";
+                const metaTextClass = isUltraCompactCard ? "text-[8px]" : "text-[9px]";
+                const titleTextClass = isUltraCompactCard ? "text-[10px] leading-[1.1]" : isCompactCard ? "text-[11px] leading-tight" : "text-[12px] leading-tight";
+                const checkboxSizeClass = isUltraCompactCard ? "h-5 w-5" : "h-6 w-6";
+                const checkboxOffsetClass = isUltraCompactCard ? "pl-5" : "pl-6";
+                const showDescription = Boolean(task.description.trim()) && h >= (isUltraCompactCard ? 76 : 58);
+                const showSubtitle = Boolean(subtitleText) && h >= (isUltraCompactCard ? 90 : 66);
+                const showCompanyMeta = h >= (isUltraCompactCard ? 64 : 54);
+                const actionButtonClass = isUltraCompactCard
+                  ? "mt-1 self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
+                  : "mt-1 self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
 
                 return (
                   <div
@@ -1685,7 +1716,7 @@ export default function SchedulePage() {
                 >
                   {/* Task body */}
                   <div
-                    className={`absolute inset-0 ${taskBgClass} flex flex-col p-1.5 transition-all duration-100
+                    className={`absolute inset-0 ${taskBgClass} flex flex-col ${bodyPaddingClass} transition-all duration-100
                       ${isDraggingThis ? "opacity-0" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
@@ -1699,7 +1730,7 @@ export default function SchedulePage() {
                         data-action="complete"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("complete", task.id)}
-                        className={`absolute top-1 left-1 h-6 w-6 shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        className={`absolute top-1 left-1 ${checkboxSizeClass} shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
@@ -1707,22 +1738,22 @@ export default function SchedulePage() {
                       </button>
                     )}
 
-                    {isCompanySchedule && creatorName && (
-                      <div className="flex items-center gap-1.5 text-white/70 text-[9px] truncate mb-0.5">
+                    {isCompanySchedule && creatorName && showCompanyMeta && (
+                      <div className={`flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate mb-0.5`}>
                         <span>from:</span>
-                        {renderSmallAvatar(creatorName, creatorAvatar, creatorId)}
+                        {renderSmallAvatar(creatorName, creatorAvatar, creatorId, avatarSize)}
                       </div>
                     )}
-                    {isCompanySchedule && editorName && (
-                      <div className="flex items-center gap-1.5 text-white/70 text-[9px] truncate mb-0.5">
+                    {isCompanySchedule && editorName && showCompanyMeta && (
+                      <div className={`flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate mb-0.5`}>
                         <span>sửa lần cuối:</span>
-                        {renderSmallAvatar(editorName, editorAvatar, task.updatedByUserId)}
+                        {renderSmallAvatar(editorName, editorAvatar, task.updatedByUserId, avatarSize)}
                       </div>
                     )}
 
-                    <div className={`flex items-start gap-1 ${!isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) ? "pl-6" : "pl-0"}`}>
+                    <div className={`flex items-start gap-1 ${!isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) ? checkboxOffsetClass : "pl-0"}`}>
                       <p
-                        className={`text-[11px] font-semibold leading-tight flex-1 text-white ${isDone ? "line-through" : ""}`}
+                        className={`${titleTextClass} font-semibold flex-1 text-white ${isDone ? "line-through" : ""}`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1734,9 +1765,9 @@ export default function SchedulePage() {
                       </p>
                     </div>
 
-                    {task.description.trim() && (
+                    {showDescription && (
                       <p
-                        className="text-white/80 text-[9px]"
+                        className={`text-white/80 ${metaTextClass}`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1747,9 +1778,9 @@ export default function SchedulePage() {
                         {task.description}
                       </p>
                     )}
-                    {subtitleText && (
+                    {showSubtitle && (
                       <p
-                        className="text-white/75 text-[9px] italic"
+                        className={`text-white/75 ${metaTextClass} italic`}
                         style={{
                           display: "-webkit-box",
                           WebkitLineClamp: 3,
@@ -1762,27 +1793,32 @@ export default function SchedulePage() {
                     )}
 
                     {!isCompanySchedule && task.assignedFromName && (
-                      <div className="flex items-center gap-1.5 text-white/65 text-[9px] truncate">
+                      <div className={`flex items-center gap-1.5 text-white/65 ${metaTextClass} truncate`}>
                         <span>from:</span>
-                        {renderSmallAvatar(task.assignedFromName, usersForAuth.find((user) => user.name === task.assignedFromName)?.avatar ?? null)}
+                        {renderSmallAvatar(task.assignedFromName, usersForAuth.find((user) => user.name === task.assignedFromName)?.avatar ?? null, undefined, avatarSize)}
                       </div>
                     )}
 
-                    {isCompanySchedule && confirmerUsers.length > 0 && (
-                      <div className="mt-auto flex items-center gap-1.5 text-white/70 text-[9px] truncate">
+                    {isCompanySchedule && confirmerUsers.length > 0 && showCompanyMeta && (
+                      <div className={`mt-auto flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate`}>
                         <span>xác nhận:</span>
                         <div className="flex items-center">
-                          {confirmerUsers.slice(0, 6).map((user, idx) => (
+                          {displayedConfirmerUsers.map((user, idx) => (
                             <div
                               key={user.id}
                               className={idx === 0 ? "" : "-ml-1.5"}
                               style={{ zIndex: 20 - idx }}
                             >
-                              {renderSmallAvatar(user.name, user.avatar, user.id)}
+                              {renderSmallAvatar(user.name, user.avatar, user.id, avatarSize)}
                             </div>
                           ))}
-                          {confirmerUsers.length > 6 && (
-                            <span className="ml-1 text-[8px] text-white/70">+{confirmerUsers.length - 6}</span>
+                          {hiddenConfirmerCount > 0 && (
+                            <div
+                              className={`${isUltraCompactCard ? "h-3.5 min-w-3.5 text-[7px]" : "h-4 min-w-4 text-[8px]"} -ml-1.5 rounded-full bg-zinc-700 px-1 font-semibold text-white border border-white/40 flex items-center justify-center`}
+                              style={{ zIndex: 10 }}
+                            >
+                              +{hiddenConfirmerCount}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1794,7 +1830,7 @@ export default function SchedulePage() {
                         data-action="confirm"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("confirm", task.id)}
-                        className="mt-1 self-end rounded-md border border-emerald-100/70 bg-emerald-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                        className={`${actionButtonClass} border-emerald-100/70 bg-emerald-400/85 text-zinc-900`}
                       >
                         Xác nhận
                       </button>
@@ -1807,12 +1843,12 @@ export default function SchedulePage() {
                           data-action="accept"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("accept", task.id)}
-                          className="absolute bottom-1 right-1 rounded-md border border-amber-100/70 bg-amber-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                          className={`${actionButtonClass} border-amber-100/70 bg-amber-400/85 text-zinc-900`}
                         >
                           Nhận
                         </button>
                       ) : (
-                        <p className="absolute bottom-1 right-1 rounded-md border border-white/40 bg-black/45 px-2 py-0.5 text-[9px] font-semibold text-white/90 shadow-sm">Đang chờ</p>
+                        <p className={`${actionButtonClass} border-white/40 bg-black/45 text-white/90`}>Đang chờ</p>
                       )
                     )}
 
