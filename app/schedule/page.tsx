@@ -176,6 +176,18 @@ const TASK_DRAFT_STORAGE_PREFIX = "todo2026.tasksDraft";
 const COMPANY_DRAFT_KEY = "company";
 
 const SLOT_MS = 30 * 60 * 1000;
+const TASK_CACHE_TTL_MS = 30 * 1000;
+
+interface TaskCacheEntry {
+  tasks: Task[];
+  syncedSignature: string;
+  fetchedAt: number;
+}
+
+function taskCacheKey(scope: ScheduleScope, ownerUserId: number | null, actorUserId: number | null): string {
+  const ownerPart = scope === "COMPANY" ? "company" : String(ownerUserId ?? 0);
+  return `${scope}:${ownerPart}:actor:${actorUserId ?? 0}`;
+}
 
 interface LocalTaskDraft {
   updatedAt: number;
@@ -591,6 +603,9 @@ export default function SchedulePage() {
   const isViewingOwnScheduleRef            = useRef(false);
   const lastSyncedSignatureRef             = useRef("");
   const hasPendingChangesRef               = useRef(false);
+  const tasksCacheRef                      = useRef<Map<string, TaskCacheEntry>>(new Map());
+  const loadTasksAbortRef                  = useRef<AbortController | null>(null);
+  const loadTasksRequestIdRef              = useRef(0);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -1236,6 +1251,7 @@ export default function SchedulePage() {
   };
 
   const loadTasks = async () => {
+    const requestId = ++loadTasksRequestIdRef.current;
     try {
       isHydratingTasksRef.current = true;
       const actorUserId = sessionUserRef.current?.id;
@@ -1246,6 +1262,24 @@ export default function SchedulePage() {
         return;
       }
 
+      const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId ?? null);
+      const cached = tasksCacheRef.current.get(cacheKey);
+      if (cached) {
+        setTasks(cached.tasks);
+        taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(cached.tasks));
+        lastSyncedSignatureRef.current = cached.syncedSignature;
+        hasPendingChangesRef.current = false;
+      }
+
+      const shouldRefresh = !cached || (Date.now() - cached.fetchedAt) > TASK_CACHE_TTL_MS;
+      if (!shouldRefresh) {
+        return;
+      }
+
+      loadTasksAbortRef.current?.abort();
+      const controller = new AbortController();
+      loadTasksAbortRef.current = controller;
+
       const params = new URLSearchParams();
       params.set("scope", scope);
       if (scope === "USER" && ownerUserId) {
@@ -1255,11 +1289,13 @@ export default function SchedulePage() {
         params.set("actorUserId", String(actorUserId));
       }
       const query = `/api/tasks?${params.toString()}`;
-      const response = await fetch(query, { cache: "no-store" });
+      const response = await fetch(query, { cache: "no-store", signal: controller.signal });
       const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
       if (!response.ok || !Array.isArray(data.tasks)) {
         throw new Error(data.error ?? "Không thể tải task.");
       }
+      if (requestId !== loadTasksRequestIdRef.current) return;
+
       const canViewPersonal = scope === "USER" && sessionUserRef.current?.id === ownerUserId;
       const remoteTasks = ensureUniqueTaskIds(data.tasks
         .map(apiTaskToLocalTask)
@@ -1275,6 +1311,11 @@ export default function SchedulePage() {
         taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
         lastSyncedSignatureRef.current = taskSignature(remoteTasks);
         hasPendingChangesRef.current = true;
+        tasksCacheRef.current.set(cacheKey, {
+          tasks: draftTasks,
+          syncedSignature: lastSyncedSignatureRef.current,
+          fetchedAt: Date.now(),
+        });
         setBadge("Đã khôi phục task từ bản nháp cục bộ");
 
         if (sessionUserRef.current) {
@@ -1293,6 +1334,11 @@ export default function SchedulePage() {
           taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
           lastSyncedSignatureRef.current = remoteSignature;
           hasPendingChangesRef.current = true;
+          tasksCacheRef.current.set(cacheKey, {
+            tasks: draftTasks,
+            syncedSignature: remoteSignature,
+            fetchedAt: Date.now(),
+          });
           setBadge("Đã khôi phục thay đổi chưa đồng bộ");
 
           if (sessionUserRef.current) {
@@ -1305,16 +1351,33 @@ export default function SchedulePage() {
       }
 
       setTasks(remoteTasks);
-  taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
+      taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
       lastSyncedSignatureRef.current = taskSignature(remoteTasks);
       hasPendingChangesRef.current = false;
-        writeTaskDraft(draftKey, remoteTasks, true);
+      tasksCacheRef.current.set(cacheKey, {
+        tasks: remoteTasks,
+        syncedSignature: lastSyncedSignatureRef.current,
+        fetchedAt: Date.now(),
+      });
+      writeTaskDraft(draftKey, remoteTasks, true);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       setAuthError(error instanceof Error ? error.message : "Không thể tải task.");
-      setTasks([]);
+      const scope = scheduleScopeRef.current;
+      const ownerUserId = authUserIdRef.current;
+      const actorUserId = sessionUserRef.current?.id ?? null;
+      const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId);
+      const cached = tasksCacheRef.current.get(cacheKey);
+      if (!cached) {
+        setTasks([]);
+      }
       lastSyncedSignatureRef.current = "";
       hasPendingChangesRef.current = false;
     } finally {
+      if (requestId !== loadTasksRequestIdRef.current) return;
+      loadTasksAbortRef.current = null;
       window.setTimeout(() => {
         isHydratingTasksRef.current = false;
       }, 0);
@@ -1353,6 +1416,17 @@ export default function SchedulePage() {
 
   useEffect(() => {
     taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(tasks));
+
+    const scope = scheduleScopeRef.current;
+    const ownerUserId = authUserIdRef.current;
+    const actorUserId = sessionUserRef.current?.id ?? null;
+    if (scope === "USER" && !ownerUserId) return;
+    const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId);
+    tasksCacheRef.current.set(cacheKey, {
+      tasks,
+      syncedSignature: lastSyncedSignatureRef.current,
+      fetchedAt: Date.now(),
+    });
   }, [tasks]);
 
   useEffect(() => {

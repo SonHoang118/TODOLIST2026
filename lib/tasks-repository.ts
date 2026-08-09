@@ -127,6 +127,15 @@ export async function ensureTasksTable(): Promise<void> {
     END
     $$;
   `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_schedule_tasks_scope_start
+    ON schedule_tasks(schedule_scope, start_at)
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_schedule_tasks_user_owner_start
+    ON schedule_tasks(schedule_scope, owner_user_id, start_at)
+  `;
 }
 
 export async function listTasksByScope(params: TaskScopeInput): Promise<TaskRecord[]> {

@@ -13,6 +13,23 @@ import { ensureBootstrapAdmin, ensureUsersTable } from "@/lib/users-repository";
 
 export const runtime = "nodejs";
 
+let tasksApiReadyPromise: Promise<void> | null = null;
+
+async function ensureTasksApiReady(): Promise<void> {
+  if (!tasksApiReadyPromise) {
+    tasksApiReadyPromise = (async () => {
+      await ensureUsersTable();
+      await ensureBootstrapAdmin();
+      await ensureTasksTable();
+    })().catch((error) => {
+      tasksApiReadyPromise = null;
+      throw error;
+    });
+  }
+
+  await tasksApiReadyPromise;
+}
+
 interface ReplaceTasksRequest {
   scope?: unknown;
   ownerUserId?: unknown;
@@ -42,9 +59,7 @@ export async function GET(request: NextRequest) {
       : parsePositiveInt(request.nextUrl.searchParams.get("ownerUserId"), "ownerUserId");
     const actorUserId = parseOptionalPositiveInt(request.nextUrl.searchParams.get("actorUserId"));
 
-    await ensureUsersTable();
-    await ensureBootstrapAdmin();
-    await ensureTasksTable();
+    await ensureTasksApiReady();
 
     const tasks = await listTasksByScope({
       scope,
@@ -67,9 +82,7 @@ export async function PUT(request: NextRequest) {
     const actorUserId = parseBodyUserId(body.actorUserId, "actorUserId");
     const tasks = parseTaskList(body.tasks);
 
-    await ensureUsersTable();
-    await ensureBootstrapAdmin();
-    await ensureTasksTable();
+    await ensureTasksApiReady();
 
     await replaceTasksForScope({ scope, ownerUserId, actorUserId }, tasks);
     const saved = await listTasksByScope({ scope, ownerUserId, actorUserId });
