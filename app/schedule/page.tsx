@@ -582,6 +582,8 @@ export default function SchedulePage() {
   const [editLabel, setEditLabel]         = useState<TaskLabelValue>(DEFAULT_TASK_LABEL);
   const [editStatus, setEditStatus]       = useState<TaskStatus>("PENDING");
   const [badge, setBadge]                 = useState<string | null>(null);
+  const [displayBadge, setDisplayBadge]   = useState<string | null>(null);
+  const [isBadgeVisible, setIsBadgeVisible] = useState(false);
   const [zoomLevel, setZoomLevel]          = useState(1);
   const [dayWidth, setDayWidth]           = useState(DAY_W);
   const [isDark, setIsDark]               = useState(true);
@@ -616,6 +618,8 @@ export default function SchedulePage() {
   const interactionUnlockTimerRef          = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskEntranceTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskExitTimerRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -1255,6 +1259,36 @@ export default function SchedulePage() {
   }, [badge]);
 
   useEffect(() => {
+    if (badgeHideTimerRef.current) {
+      clearTimeout(badgeHideTimerRef.current);
+      badgeHideTimerRef.current = null;
+    }
+    if (badgeShowTimerRef.current) {
+      clearTimeout(badgeShowTimerRef.current);
+      badgeShowTimerRef.current = null;
+    }
+
+    if (!badge) {
+      if (displayBadge !== null) {
+        setIsBadgeVisible(false);
+        badgeHideTimerRef.current = setTimeout(() => {
+          setDisplayBadge(null);
+          badgeHideTimerRef.current = null;
+        }, 260);
+      }
+      return;
+    }
+
+    setDisplayBadge(badge);
+    if (!isBadgeVisible) {
+      badgeShowTimerRef.current = setTimeout(() => {
+        setIsBadgeVisible(true);
+        badgeShowTimerRef.current = null;
+      }, 16);
+    }
+  }, [badge, displayBadge, isBadgeVisible]);
+
+  useEffect(() => {
     return () => {
       if (interactionUnlockTimerRef.current) {
         clearTimeout(interactionUnlockTimerRef.current);
@@ -1264,6 +1298,12 @@ export default function SchedulePage() {
       }
       if (taskExitTimerRef.current) {
         clearTimeout(taskExitTimerRef.current);
+      }
+      if (badgeHideTimerRef.current) {
+        clearTimeout(badgeHideTimerRef.current);
+      }
+      if (badgeShowTimerRef.current) {
+        clearTimeout(badgeShowTimerRef.current);
       }
       loadTasksAbortRef.current?.abort();
     };
@@ -1712,7 +1752,7 @@ export default function SchedulePage() {
         )}
 
         <div className="flex-1 text-center min-w-0">
-          <p className={`text-xs font-semibold text-zinc-300 truncate transition-transform duration-300 ${badge ? "-translate-y-0.5" : "translate-y-0"}`}>
+          <p className={`text-xs font-semibold text-zinc-300 truncate transition-transform duration-300 ${isBadgeVisible ? "-translate-y-0.5" : "translate-y-0"}`}>
             {infiniteScroll ? today.toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "numeric", year: "numeric" }) : (
               <>
                 {weekDates[0]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })}
@@ -1722,9 +1762,9 @@ export default function SchedulePage() {
             )}
           </p>
           <div
-            className={`overflow-hidden transition-all duration-300 ease-out ${badge ? "max-h-6 opacity-100 translate-y-0 mt-0.5" : "max-h-0 opacity-0 -translate-y-1 mt-0"}`}
+            className={`overflow-hidden transition-all duration-300 ease-out ${isBadgeVisible ? "max-h-6 opacity-100 translate-y-0 mt-0.5" : "max-h-0 opacity-0 -translate-y-1 mt-0"}`}
           >
-            <p className="text-[10px] text-violet-400 truncate">{badge ?? ""}</p>
+            <p className="text-[10px] text-violet-400 truncate">{displayBadge ?? ""}</p>
           </div>
         </div>
 
