@@ -1794,7 +1794,7 @@ export default function SchedulePage() {
                         data-action="confirm"
                         data-task-id={task.id}
                         onClick={() => applyTaskAction("confirm", task.id)}
-                        className="absolute bottom-1 right-1 rounded-md border border-emerald-100/70 bg-emerald-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
+                        className="mt-1 self-end rounded-md border border-emerald-100/70 bg-emerald-400/85 px-2 py-0.5 text-[9px] font-semibold text-zinc-900 shadow-md"
                       >
                         Xác nhận
                       </button>
@@ -2083,6 +2083,11 @@ export default function SchedulePage() {
         if (!task) return null;
         const taskDate = absDayToDate(task.absDay);
         const durationMinutes = task.span * 30;
+        const creatorName = task.createdByName ?? task.assignedFromName ?? "Không rõ";
+        const updatedByName = task.updatedByName ?? "Chưa có";
+        const confirmerNames = task.confirmedByUserIds
+          .map((id) => usersForAuth.find((user) => user.id === id)?.name ?? `ID ${id}`)
+          .filter((name, idx, arr) => arr.indexOf(name) === idx);
         return (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -2114,17 +2119,19 @@ export default function SchedulePage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
-                  <p className={`text-[11px] ${th.subtext}`}>Nhãn</p>
-                  <select
-                    className="mt-1 w-full rounded-md bg-transparent text-[16px] italic outline-none"
-                    value={normalizeTaskLabel(task.label)}
-                    onChange={(e) => patchTask(task.id, { label: normalizeTaskLabel(e.target.value) })}
-                  >
-                    <option value={DEFAULT_TASK_LABEL}>{TASK_LABEL_TEXT.DEFAULT}</option>
-                    <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
-                  </select>
-                </div>
+                {!isCompanySchedule && (
+                  <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
+                    <p className={`text-[11px] ${th.subtext}`}>Nhãn</p>
+                    <select
+                      className="mt-1 w-full rounded-md bg-transparent text-[16px] italic outline-none"
+                      value={normalizeTaskLabel(task.label)}
+                      onChange={(e) => patchTask(task.id, { label: normalizeTaskLabel(e.target.value) })}
+                    >
+                      <option value={DEFAULT_TASK_LABEL}>{TASK_LABEL_TEXT.DEFAULT}</option>
+                      <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
+                    </select>
+                  </div>
+                )}
                 <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
                   <p className={`text-[11px] ${th.subtext}`}>Màu</p>
                   <div className="mt-1 flex items-center gap-2">
@@ -2160,6 +2167,31 @@ export default function SchedulePage() {
                 </p>
                 <p className={`mt-0.5 text-xs ${th.subtext}`}>{durationMinutes} phút</p>
               </div>
+
+              {isCompanySchedule && (
+                <>
+                  <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                    <p className={`text-[11px] ${th.subtext}`}>Người tạo</p>
+                    <p className="mt-0.5 text-sm break-words">{creatorName}</p>
+                  </div>
+                  <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                    <p className={`text-[11px] ${th.subtext}`}>Người sửa lần cuối</p>
+                    <p className="mt-0.5 text-sm break-words">{updatedByName}</p>
+                  </div>
+                  <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                    <p className={`text-[11px] ${th.subtext}`}>Người xác nhận</p>
+                    {confirmerNames.length > 0 ? (
+                      <div className="mt-0.5 text-sm">
+                        {confirmerNames.map((name) => (
+                          <p key={name} className="break-words">{name}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-0.5 text-sm">Chưa có</p>
+                    )}
+                  </div>
+                </>
+              )}
 
               {task.assignedFromName && (
                 <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
