@@ -2118,6 +2118,21 @@ export default function SchedulePage() {
                 />
               </div>
 
+              {isCompanySchedule && (
+                <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Người xác nhận</p>
+                  {confirmerNames.length > 0 ? (
+                    <div className="mt-0.5 text-sm">
+                      {confirmerNames.map((name) => (
+                        <p key={name} className="break-words">{name}</p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-0.5 text-sm">Chưa có</p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2 mt-2">
                 {!isCompanySchedule && (
                   <div className={`rounded-xl ${th.inputBg} px-3 py-2`}>
@@ -2178,22 +2193,10 @@ export default function SchedulePage() {
                     <p className={`text-[11px] ${th.subtext}`}>Người sửa lần cuối</p>
                     <p className="mt-0.5 text-sm break-words">{updatedByName}</p>
                   </div>
-                  <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                    <p className={`text-[11px] ${th.subtext}`}>Người xác nhận</p>
-                    {confirmerNames.length > 0 ? (
-                      <div className="mt-0.5 text-sm">
-                        {confirmerNames.map((name) => (
-                          <p key={name} className="break-words">{name}</p>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-0.5 text-sm">Chưa có</p>
-                    )}
-                  </div>
                 </>
               )}
 
-              {task.assignedFromName && (
+              {!isCompanySchedule && task.assignedFromName && (
                 <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
                   <p className={`text-[11px] ${th.subtext}`}>Được giao từ</p>
                   <p className="mt-0.5 text-sm wrap-break-word">{task.assignedFromName}</p>
