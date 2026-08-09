@@ -439,13 +439,19 @@ function renderSmallAvatar(
       <img
         src={avatar}
         alt={name ?? "avatar"}
-        className={`${sizeClass} rounded-full object-cover border border-white/40 shrink-0`}
+        draggable={false}
+        onDragStart={(event) => event.preventDefault()}
+        className={`${sizeClass} rounded-full object-cover border border-white/40 shrink-0 pointer-events-none select-none`}
+        style={{ WebkitTouchCallout: "none" }}
       />
     );
   }
 
   return (
-    <div className={`${sizeClass} rounded-full bg-zinc-700 text-white font-semibold flex items-center justify-center border border-white/40 shrink-0`}>
+    <div
+      className={`${sizeClass} rounded-full bg-zinc-700 text-white font-semibold flex items-center justify-center border border-white/40 shrink-0 pointer-events-none select-none`}
+      style={{ WebkitTouchCallout: "none" }}
+    >
       {label}
     </div>
   );
