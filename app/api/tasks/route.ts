@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import {
   ensureTasksTable,
+  getTaskScopeVersion,
   listTasksByScope,
   replaceTasksForScope,
   type TaskInput,
@@ -61,12 +62,17 @@ export async function GET(request: NextRequest) {
 
     await ensureTasksApiReady();
 
-    const tasks = await listTasksByScope({
+    const scopeInput = {
       scope,
       ownerUserId,
       actorUserId: actorUserId ?? ownerUserId ?? 0,
-    });
-    return Response.json({ tasks }, { status: 200 });
+    };
+
+    const [tasks, versionInfo] = await Promise.all([
+      listTasksByScope(scopeInput),
+      getTaskScopeVersion(scopeInput),
+    ]);
+    return Response.json({ tasks, version: versionInfo.version }, { status: 200 });
   } catch (error) {
     return Response.json({ error: toErrorMessage(error, "Could not load tasks") }, { status: 400 });
   }
@@ -84,10 +90,15 @@ export async function PUT(request: NextRequest) {
 
     await ensureTasksApiReady();
 
-    await replaceTasksForScope({ scope, ownerUserId, actorUserId }, tasks);
-    const saved = await listTasksByScope({ scope, ownerUserId, actorUserId });
+    const scopeInput = { scope, ownerUserId, actorUserId };
 
-    return Response.json({ tasks: saved }, { status: 200 });
+    await replaceTasksForScope(scopeInput, tasks);
+    const [saved, versionInfo] = await Promise.all([
+      listTasksByScope(scopeInput),
+      getTaskScopeVersion(scopeInput),
+    ]);
+
+    return Response.json({ tasks: saved, version: versionInfo.version }, { status: 200 });
   } catch (error) {
     return Response.json({ error: toErrorMessage(error, "Could not save tasks") }, { status: 400 });
   }

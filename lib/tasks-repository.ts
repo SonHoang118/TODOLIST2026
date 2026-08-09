@@ -63,6 +63,12 @@ export interface TaskScopeInput {
   actorUserId: number;
 }
 
+export interface TaskScopeVersion {
+  version: string;
+  count: number;
+  latestCreatedAt: string | null;
+}
+
 const VALID_STATUS = new Set<TaskStatus>(["PENDING", "IN_PROGRESS", "DONE"]);
 const DEFAULT_LABEL: TaskLabel = "DEFAULT";
 const PERSONAL_LABEL: TaskLabel = "PERSONAL";
@@ -203,6 +209,42 @@ export async function listTasksByScope(params: TaskScopeInput): Promise<TaskReco
       `;
 
   return rows.map((row) => toTaskRecord(toDbTaskRow(row)));
+}
+
+export async function getTaskScopeVersion(params: TaskScopeInput): Promise<TaskScopeVersion> {
+  const sql = getSql();
+
+  const rows = params.scope === "COMPANY"
+    ? await sql`
+        SELECT
+          COUNT(*)::BIGINT AS task_count,
+          MAX(t.created_at) AS latest_created_at,
+          COALESCE(MAX(t.id), 0)::BIGINT AS latest_id
+        FROM schedule_tasks t
+        WHERE t.schedule_scope = 'COMPANY'
+      `
+    : await sql`
+        SELECT
+          COUNT(*)::BIGINT AS task_count,
+          MAX(t.created_at) AS latest_created_at,
+          COALESCE(MAX(t.id), 0)::BIGINT AS latest_id
+        FROM schedule_tasks t
+        WHERE t.schedule_scope = 'USER'
+          AND t.owner_user_id = ${params.ownerUserId ?? 0}
+          AND (${params.actorUserId} = ${params.ownerUserId ?? 0} OR UPPER(t.label) <> 'PERSONAL')
+      `;
+
+  const row = rows[0] as Record<string, unknown> | undefined;
+  const count = row ? toNumber(row.task_count) : 0;
+  const latestId = row ? toNumber(row.latest_id) : 0;
+  const latestCreatedAt = toNullableIsoString(row?.latest_created_at);
+  const version = `${params.scope}:${params.ownerUserId ?? 0}:${count}:${latestId}:${latestCreatedAt ?? "none"}`;
+
+  return {
+    version,
+    count,
+    latestCreatedAt,
+  };
 }
 
 export async function replaceTasksForScope(
@@ -407,4 +449,10 @@ function toIsoString(value: unknown): string {
     return value;
   }
   return String(value ?? "");
+}
+
+function toNullableIsoString(value: unknown): string | null {
+  if (value == null) return null;
+  const text = toIsoString(value);
+  return text.length > 0 ? text : null;
 }

@@ -153,6 +153,17 @@ interface ApiTask {
   confirmedByUserIds: number[];
 }
 
+interface TasksApiResponse {
+  tasks?: ApiTask[];
+  version?: string;
+  error?: string;
+}
+
+interface TaskVersionApiResponse {
+  version?: string;
+  error?: string;
+}
+
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 type TaskLabelValue = "DEFAULT" | "PERSONAL";
 type ScheduleScope = "USER" | "COMPANY";
@@ -177,6 +188,7 @@ const COMPANY_DRAFT_KEY = "company";
 
 const SLOT_MS = 30 * 60 * 1000;
 const TASK_CACHE_TTL_MS = 30 * 1000;
+const TASK_VERSION_FALLBACK_POLL_MS = 6000;
 
 interface TaskCacheEntry {
   tasks: Task[];
@@ -612,6 +624,10 @@ export default function SchedulePage() {
   const tasksCacheRef                      = useRef<Map<string, TaskCacheEntry>>(new Map());
   const loadTasksAbortRef                  = useRef<AbortController | null>(null);
   const loadTasksRequestIdRef              = useRef(0);
+  const tasksEventSourceRef                = useRef<EventSource | null>(null);
+  const tasksVersionPollTimerRef           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastRemoteVersionRef               = useRef("");
+  const pendingRemoteRefreshRef            = useRef(false);
   const loadingStartedAtRef                = useRef<number | null>(null);
   const loadingRequestIdRef                = useRef<number | null>(null);
   const interactionLockedRef               = useRef(true);
@@ -1305,6 +1321,12 @@ export default function SchedulePage() {
       if (badgeShowTimerRef.current) {
         clearTimeout(badgeShowTimerRef.current);
       }
+      if (tasksVersionPollTimerRef.current) {
+        clearInterval(tasksVersionPollTimerRef.current);
+      }
+      if (tasksEventSourceRef.current) {
+        tasksEventSourceRef.current.close();
+      }
       loadTasksAbortRef.current?.abort();
     };
   }, []);
@@ -1353,7 +1375,7 @@ export default function SchedulePage() {
         }),
         keepalive: options?.keepalive,
       });
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as TasksApiResponse;
       if (!response.ok) {
         throw new Error(data.error ?? "Không thể lưu task.");
       }
@@ -1363,8 +1385,16 @@ export default function SchedulePage() {
         setBadge("Đã tự lưu");
       }
       lastSyncedSignatureRef.current = taskSignature(tasksToSave);
+      if (typeof data.version === "string") {
+        lastRemoteVersionRef.current = data.version;
+      }
       hasPendingChangesRef.current = false;
       writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, true);
+
+      if (pendingRemoteRefreshRef.current) {
+        pendingRemoteRefreshRef.current = false;
+        void loadTasks({ forceRefresh: true });
+      }
     } catch (error) {
       hasPendingChangesRef.current = true;
       writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, false);
@@ -1374,7 +1404,7 @@ export default function SchedulePage() {
     }
   };
 
-  const loadTasks = async () => {
+  const loadTasks = async (options?: { forceRefresh?: boolean }) => {
     const requestId = ++loadTasksRequestIdRef.current;
     try {
       isHydratingTasksRef.current = true;
@@ -1397,7 +1427,7 @@ export default function SchedulePage() {
         hasPendingChangesRef.current = false;
       }
 
-      const shouldRefresh = !cached || (Date.now() - cached.fetchedAt) > TASK_CACHE_TTL_MS;
+      const shouldRefresh = options?.forceRefresh || !cached || (Date.now() - cached.fetchedAt) > TASK_CACHE_TTL_MS;
       const shouldShowLoading = !cached;
 
       if (shouldShowLoading) {
@@ -1424,11 +1454,16 @@ export default function SchedulePage() {
       }
       const query = `/api/tasks?${params.toString()}`;
       const response = await fetch(query, { cache: "no-store", signal: controller.signal });
-      const data = (await response.json()) as { tasks?: ApiTask[]; error?: string };
+      const data = (await response.json()) as TasksApiResponse;
       if (!response.ok || !Array.isArray(data.tasks)) {
         throw new Error(data.error ?? "Không thể tải task.");
       }
       if (requestId !== loadTasksRequestIdRef.current) return;
+
+      if (typeof data.version === "string") {
+        lastRemoteVersionRef.current = data.version;
+      }
+      pendingRemoteRefreshRef.current = false;
 
       const canViewPersonal = scope === "USER" && sessionUserRef.current?.id === ownerUserId;
       const remoteTasks = ensureUniqueTaskIds(data.tasks
@@ -1574,6 +1609,106 @@ export default function SchedulePage() {
     if (scheduleScope === "USER" && !authUserId) return;
     void loadTasks();
   }, [authUserId, scheduleScope]);
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    if (scheduleScope === "USER" && !authUserId) return;
+
+    if (tasksVersionPollTimerRef.current) {
+      clearInterval(tasksVersionPollTimerRef.current);
+      tasksVersionPollTimerRef.current = null;
+    }
+    if (tasksEventSourceRef.current) {
+      tasksEventSourceRef.current.close();
+      tasksEventSourceRef.current = null;
+    }
+
+    let disposed = false;
+
+    const createVersionQuery = () => {
+      const params = new URLSearchParams();
+      params.set("scope", scheduleScope);
+      if (scheduleScope === "USER" && authUserId) {
+        params.set("ownerUserId", String(authUserId));
+      }
+      params.set("actorUserId", String(sessionUser.id));
+      return params.toString();
+    };
+
+    const consumeRemoteVersion = (version: string) => {
+      if (!version || version === lastRemoteVersionRef.current) return;
+
+      if (hasPendingChangesRef.current) {
+        pendingRemoteRefreshRef.current = true;
+        setBadge("Có cập nhật mới từ người khác");
+        return;
+      }
+
+      lastRemoteVersionRef.current = version;
+      pendingRemoteRefreshRef.current = false;
+      void loadTasks({ forceRefresh: true });
+    };
+
+    const pollRemoteVersion = async () => {
+      try {
+        const response = await fetch(`/api/tasks/version?${createVersionQuery()}`, { cache: "no-store" });
+        const data = (await response.json()) as TaskVersionApiResponse;
+        if (!response.ok || typeof data.version !== "string") return;
+        consumeRemoteVersion(data.version);
+      } catch {
+        // Ignore temporary poll failures.
+      }
+    };
+
+    const startFallbackPoll = () => {
+      if (tasksVersionPollTimerRef.current || disposed) return;
+
+      tasksVersionPollTimerRef.current = setInterval(() => {
+        void pollRemoteVersion();
+      }, TASK_VERSION_FALLBACK_POLL_MS);
+    };
+
+    const query = createVersionQuery();
+    const es = new EventSource(`/api/tasks/events?${query}`);
+    tasksEventSourceRef.current = es;
+
+    es.addEventListener("tasks-version", (event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent).data) as TaskVersionApiResponse;
+        if (typeof payload.version === "string") {
+          consumeRemoteVersion(payload.version);
+        }
+      } catch {
+        // Ignore malformed events from transient proxies.
+      }
+    });
+
+    es.addEventListener("tasks-error", () => {
+      startFallbackPoll();
+    });
+
+    es.onerror = () => {
+      es.close();
+      if (tasksEventSourceRef.current === es) {
+        tasksEventSourceRef.current = null;
+      }
+      startFallbackPoll();
+    };
+
+    void pollRemoteVersion();
+
+    return () => {
+      disposed = true;
+      es.close();
+      if (tasksEventSourceRef.current === es) {
+        tasksEventSourceRef.current = null;
+      }
+      if (tasksVersionPollTimerRef.current) {
+        clearInterval(tasksVersionPollTimerRef.current);
+        tasksVersionPollTimerRef.current = null;
+      }
+    };
+  }, [authUserId, scheduleScope, sessionUser]);
 
   useEffect(() => {
     const draftKey = scheduleScope === "USER" ? authUserId : COMPANY_DRAFT_KEY;
