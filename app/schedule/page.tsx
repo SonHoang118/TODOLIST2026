@@ -1719,8 +1719,8 @@ export default function SchedulePage() {
                   && (!isCompanySchedule || h >= 100);
                 const showCompanyMeta = h >= 100;
                 const actionButtonClass = isUltraCompactCard
-                  ? "mt-auto self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
-                  : "mt-auto self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
+                  ? "self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
+                  : "self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
 
                 return (
                   <div
@@ -1824,41 +1824,45 @@ export default function SchedulePage() {
                       </div>
                     )}
 
-                    {isCompanySchedule && confirmerUsers.length > 0 && showCompanyMeta && (
-                      <div className={`mt-1 flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate`}>
-                        <span>xác nhận:</span>
-                        <div className="flex items-center">
-                          {displayedConfirmerUsers.map((user, idx) => (
-                            <div
-                              key={user.id}
-                              className={idx === 0 ? "" : "-ml-1.5"}
-                              style={{ zIndex: 20 - idx }}
-                            >
-                              {renderSmallAvatar(user.name, user.avatar, user.id, avatarSize)}
+                    {isCompanySchedule && showCompanyMeta && (confirmerUsers.length > 0 || canConfirmCompanyTask) && (
+                      <div className="mt-auto flex flex-col items-end gap-1">
+                        {confirmerUsers.length > 0 && (
+                          <div className={`self-start flex items-center gap-1.5 text-white/70 ${metaTextClass} truncate`}>
+                            <span>xác nhận:</span>
+                            <div className="flex items-center">
+                              {displayedConfirmerUsers.map((user, idx) => (
+                                <div
+                                  key={user.id}
+                                  className={idx === 0 ? "" : "-ml-1.5"}
+                                  style={{ zIndex: 20 - idx }}
+                                >
+                                  {renderSmallAvatar(user.name, user.avatar, user.id, avatarSize)}
+                                </div>
+                              ))}
+                              {hiddenConfirmerCount > 0 && (
+                                <div
+                                  className={`${isUltraCompactCard ? "h-3.5 min-w-3.5 text-[7px]" : "h-4 min-w-4 text-[8px]"} -ml-1.5 rounded-full bg-zinc-700 px-1 font-semibold text-white border border-white/40 flex items-center justify-center`}
+                                  style={{ zIndex: 10 }}
+                                >
+                                  +{hiddenConfirmerCount}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                          {hiddenConfirmerCount > 0 && (
-                            <div
-                              className={`${isUltraCompactCard ? "h-3.5 min-w-3.5 text-[7px]" : "h-4 min-w-4 text-[8px]"} -ml-1.5 rounded-full bg-zinc-700 px-1 font-semibold text-white border border-white/40 flex items-center justify-center`}
-                              style={{ zIndex: 10 }}
-                            >
-                              +{hiddenConfirmerCount}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                          </div>
+                        )}
 
-                    {canConfirmCompanyTask && (
-                      <button
-                        type="button"
-                        data-action="confirm"
-                        data-task-id={task.id}
-                        onClick={() => applyTaskAction("confirm", task.id)}
-                        className={`${actionButtonClass} border-emerald-100/70 bg-emerald-400/85 text-zinc-900`}
-                      >
-                        Xác nhận
-                      </button>
+                        {canConfirmCompanyTask && (
+                          <button
+                            type="button"
+                            data-action="confirm"
+                            data-task-id={task.id}
+                            onClick={() => applyTaskAction("confirm", task.id)}
+                            className={`${actionButtonClass} border-emerald-100/70 bg-emerald-400/85 text-zinc-900`}
+                          >
+                            Xác nhận
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {isPending && (
