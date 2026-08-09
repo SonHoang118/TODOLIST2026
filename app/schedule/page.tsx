@@ -1718,6 +1718,9 @@ export default function SchedulePage() {
     : undefined;
   const isViewingOwnSchedule = !isCompanySchedule && sessionUser !== null && authUserId === sessionUser.id;
   const isUiLocked = isScheduleLoading || isInteractionLocked;
+  const gridStrongBorderClass = isCompanySchedule ? "border-rose-500/30" : th.border;
+  const gridHalfBorderClass = isCompanySchedule ? "border-rose-500/15" : th.halfBorder;
+  const gridDayBorderClass = isCompanySchedule ? "border-rose-500/25" : th.dayBorder;
 
   const handleResetInfiniteView = () => {
     const c = scrollRef.current;
@@ -1880,7 +1883,7 @@ export default function SchedulePage() {
                 <div
                   key={slot}
                   style={{ height: effSlotH, display: "flex" }}
-                  className={slot % 2 === 0 ? `border-t ${th.border}` : `border-t ${th.halfBorder}`}
+                  className={slot % 2 === 0 ? `border-t ${gridStrongBorderClass}` : `border-t ${gridHalfBorderClass}`}
                 >
                   {Array.from({ length: colCount }, (_, day) => (
                     <div
@@ -1888,7 +1891,7 @@ export default function SchedulePage() {
                       data-day={day}
                       data-slot={slot}
                       style={{ width: dayWidth }}
-                      className={`shrink-0 border-l ${th.dayBorder} ${day === todayIdx ? th.todayCol : ""}`}
+                      className={`shrink-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`}
                     />
                   ))}
                 </div>
@@ -1969,6 +1972,12 @@ export default function SchedulePage() {
                 const actionButtonClass = isUltraCompactCard
                   ? "self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
                   : "self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
+                const pendingBottomReserveClass = isPending
+                  ? (isUltraCompactCard ? "pb-5" : "pb-6")
+                  : "";
+                const pendingActionClass = isUltraCompactCard
+                  ? "absolute bottom-1 right-1 z-10 rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
+                  : "absolute bottom-1.5 right-1.5 z-10 rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
 
                 const taskAnimationClass = isTaskExitActive
                   ? "schedule-task-exit"
@@ -2001,7 +2010,7 @@ export default function SchedulePage() {
                 >
                   {/* Task body */}
                   <div
-                    className={`absolute inset-0 ${taskBgClass} flex flex-col ${bodyPaddingClass} transition-all duration-100
+                    className={`absolute inset-0 ${taskBgClass} flex flex-col ${bodyPaddingClass} ${pendingBottomReserveClass} transition-all duration-100
                       ${isDraggingThis ? "opacity-0" : ""}
                       ${isLongPressed  ? "ring-2 ring-white/70 ring-inset scale-[0.96]" : ""}
                       ${isResizing     ? "ring-2 ring-white ring-inset brightness-110" : ""}
@@ -2132,12 +2141,12 @@ export default function SchedulePage() {
                           data-action="accept"
                           data-task-id={task.id}
                           onClick={() => applyTaskAction("accept", task.id)}
-                          className={`${actionButtonClass} border-amber-100/70 bg-amber-400/85 text-zinc-900`}
+                          className={`${pendingActionClass} border-amber-100/70 bg-amber-400/85 text-zinc-900`}
                         >
                           Nhận
                         </button>
                       ) : (
-                        <p className={`${actionButtonClass} border-white/40 bg-black/45 text-white/90`}>Đang chờ</p>
+                        <p className={`${pendingActionClass} border-white/40 bg-black/45 text-white/90`}>Đang chờ</p>
                       )
                     )}
 
