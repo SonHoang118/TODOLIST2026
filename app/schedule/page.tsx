@@ -1712,7 +1712,7 @@ export default function SchedulePage() {
         )}
 
         <div className="flex-1 text-center min-w-0">
-          <p className="text-xs font-semibold text-zinc-300 truncate">
+          <p className={`text-xs font-semibold text-zinc-300 truncate transition-transform duration-300 ${badge ? "-translate-y-0.5" : "translate-y-0"}`}>
             {infiniteScroll ? today.toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "numeric", year: "numeric" }) : (
               <>
                 {weekDates[0]?.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" })}
@@ -1721,9 +1721,11 @@ export default function SchedulePage() {
               </>
             )}
           </p>
-          {badge && (
-            <p className="text-[10px] text-violet-400 truncate">{badge}</p>
-          )}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-out ${badge ? "max-h-6 opacity-100 translate-y-0 mt-0.5" : "max-h-0 opacity-0 -translate-y-1 mt-0"}`}
+          >
+            <p className="text-[10px] text-violet-400 truncate">{badge ?? ""}</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
