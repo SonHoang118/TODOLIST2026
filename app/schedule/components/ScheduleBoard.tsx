@@ -1101,6 +1101,10 @@ export default function SchedulePage() {
     const targetOwnerId = notification.taskOwnerUserId ?? legacyOwner;
     if (targetScope === "USER" && targetOwnerId === null) return;
 
+    // Respond to the click immediately while the latest task state is checked.
+    setIsNotificationNavigating(true);
+    setNotificationsOpen(false);
+
     try {
       const params = new URLSearchParams({
         scope: targetScope,
@@ -1110,19 +1114,17 @@ export default function SchedulePage() {
       if (!response.ok) return;
       const targetTasks = await response.json() as Task[];
       if (!targetTasks.some((task) => task.id === notification.taskId)) {
-        setNotificationsOpen(false);
+        setIsNotificationNavigating(false);
         setBadge("Task không còn tồn tại");
         return;
       }
     } catch {
-      // Keep the sidebar open when the latest task state cannot be checked.
+      setIsNotificationNavigating(false);
       return;
     }
 
     const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
-    setIsNotificationNavigating(true);
     setHasObservedNotificationLoad(false);
-    setNotificationsOpen(false);
     setViewMode("SCHEDULE");
     setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null, requiresLoad });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
