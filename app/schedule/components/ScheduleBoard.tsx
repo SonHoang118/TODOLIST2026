@@ -127,6 +127,7 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<number | null>(null);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
   const [horizontalViewport, setHorizontalViewport] = useState({ left: 0, width: 0 });
@@ -1086,6 +1087,38 @@ export default function SchedulePage() {
     setResizingId(null);
   };
 
+  const handleNotificationTaskClick = (notification: AppNotification) => {
+    const task = notification.taskId === null ? null : tasks.find((item) => item.id === notification.taskId);
+    // Notifications can belong to the company calendar or another person's calendar.
+    // Only move within the calendar the user is currently authorised to view as their own.
+    if (!isViewingOwnSchedule || !task) return;
+    setNotificationsOpen(false);
+    setViewMode("SCHEDULE");
+    setNotificationTaskToFocus(task.id);
+    if (!infiniteScroll) setInfiniteScroll(true);
+  };
+
+  useLayoutEffect(() => {
+    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll) return;
+    const task = tasks.find((item) => item.id === notificationTaskToFocus);
+    const container = scrollRef.current;
+    if (!task || !container) return;
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const targetDay = task.absDay - viewStartAbsDay;
+    const targetLeft = TIME_W + targetDay * dayWidth + dayWidth / 2 - container.clientWidth / 2;
+    const targetTop = HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2 - container.clientHeight / 2;
+    const frame = requestAnimationFrame(() => {
+      container.scrollTo({
+        left: Math.max(0, targetLeft),
+        top: Math.max(0, targetTop),
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+      });
+      setBadge(`Đang xem: ${task.title}`);
+      setNotificationTaskToFocus(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dayWidth, effSlotH, infiniteScroll, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
+
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`}>
 
@@ -1784,7 +1817,8 @@ export default function SchedulePage() {
               const borderColor = notification.kind === "ASSIGNED" ? "border-violet-500/50" : notification.kind === "ACCEPTED" ? "border-amber-500/50" : notification.kind === "COMPLETED" ? "border-emerald-500/50" : notification.kind === "COMPANY_CREATED" ? "border-sky-500/50" : "border-rose-500/50";
               const actor = usersForAuth.find((user) => user.name === notification.actorName);
               const actorInitial = (notification.actorName ?? "H").trim().charAt(0).toUpperCase() || "H";
-              return <article key={notification.id} className={`mx-3 mb-2 flex gap-2.5 rounded-xl border border-l-4 px-3 py-3 ${borderColor} ${notification.isRead ? "opacity-70" : isDark ? "bg-violet-950/30" : "bg-violet-50"}`}>
+              const canOpenTask = isViewingOwnSchedule && notification.taskId !== null && tasks.some((task) => task.id === notification.taskId);
+              return <article key={notification.id} onClick={() => handleNotificationTaskClick(notification)} className={`mx-3 mb-2 flex gap-2.5 rounded-xl border border-l-4 px-3 py-3 ${borderColor} ${canOpenTask ? "cursor-pointer transition hover:-translate-y-0.5 hover:brightness-110" : "cursor-default"} ${notification.isRead ? "opacity-70" : isDark ? "bg-violet-950/30" : "bg-violet-50"}`}>
                 {actor?.avatar ? (
                   <img src={actor.avatar} alt={notification.actorName ?? "Người thực hiện"} className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />
                 ) : (
