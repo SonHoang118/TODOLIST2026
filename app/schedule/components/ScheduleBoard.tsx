@@ -1275,6 +1275,9 @@ export default function SchedulePage() {
                   const canToggleDone = !isCompanySchedule
                     && isViewingOwnSchedule
                     && (task.status === "IN_PROGRESS" || task.status === "DONE");
+                  // The sticky content must be narrower than its task bar;
+                  // otherwise CSS has no room to move it while scrolling.
+                  const stickyContentWidth = Math.min(width, 220);
                   return (
                     <div
                       key={task.id}
@@ -1284,8 +1287,8 @@ export default function SchedulePage() {
                     >
                       {/* Stays visible during horizontal scroll, but its task bar bounds the sticky area. */}
                       <div
-                        className={`sticky z-10 flex h-full w-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
-                        style={{ left: TIME_W, backgroundColor }}
+                        className={`sticky z-10 flex h-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
+                        style={{ left: TIME_W, width: stickyContentWidth, backgroundColor }}
                       >
                         {canToggleDone && (
                           <button
