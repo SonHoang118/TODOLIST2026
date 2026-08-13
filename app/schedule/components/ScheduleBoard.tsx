@@ -241,6 +241,7 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
+  const [horizontalViewport, setHorizontalViewport] = useState({ left: 0, width: 0 });
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
   const [isScheduleLoading] = useState(false);
   const [isInteractionLocked, setIsInteractionLocked] = useState(false);
@@ -344,16 +345,21 @@ export default function SchedulePage() {
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
   const viewStartSlot = viewStartAbsDay * SLOTS;
-  const viewEndSlot = (viewStartAbsDay + colCount) * SLOTS;
+  const viewportStartPx = horizontalViewport.width > 0 ? horizontalViewport.left : 0;
+  const viewportEndPx = horizontalViewport.width > 0
+    ? Math.min(colCount * dayWidth, horizontalViewport.left + horizontalViewport.width - TIME_W)
+    : colCount * dayWidth;
+  const visibleStartSlot = viewStartSlot + (viewportStartPx / dayWidth) * SLOTS;
+  const visibleEndSlot = viewStartSlot + (viewportEndPx / dayWidth) * SLOTS;
   const multiDayTasksBeforeView = tasks
-    .filter((task) => isMultiDayTask(task) && (task.endAbsDay ?? task.absDay) * SLOTS + getMultiDayEndSlot(task) <= viewStartSlot)
+    .filter((task) => isMultiDayTask(task) && (task.endAbsDay ?? task.absDay) * SLOTS + getMultiDayEndSlot(task) <= visibleStartSlot)
     .sort((first, second) => {
       const firstEnd = (first.endAbsDay ?? first.absDay) * SLOTS + getMultiDayEndSlot(first);
       const secondEnd = (second.endAbsDay ?? second.absDay) * SLOTS + getMultiDayEndSlot(second);
       return secondEnd - firstEnd;
     });
   const multiDayTasksAfterView = tasks
-    .filter((task) => isMultiDayTask(task) && task.absDay * SLOTS + task.slotIndex >= viewEndSlot)
+    .filter((task) => isMultiDayTask(task) && task.absDay * SLOTS + task.slotIndex >= visibleEndSlot)
     .sort((first, second) => first.absDay * SLOTS + first.slotIndex - (second.absDay * SLOTS + second.slotIndex));
   const nearestMultiDayTaskBeforeView = multiDayTasksBeforeView[0];
   const nearestMultiDayTaskAfterView = multiDayTasksAfterView[0];
@@ -1104,6 +1110,27 @@ export default function SchedulePage() {
     setViewMode((mode) => mode === "SCHEDULE" ? "TASK_LIST" : "SCHEDULE");
   };
 
+  useLayoutEffect(() => {
+    if (viewMode !== "SCHEDULE") return;
+    const container = scrollRef.current;
+    if (!container) return;
+
+    const updateViewport = () => {
+      const next = { left: container.scrollLeft, width: container.clientWidth };
+      setHorizontalViewport((current) => (
+        current.left === next.left && current.width === next.width ? current : next
+      ));
+    };
+
+    updateViewport();
+    container.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      container.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [viewMode]);
+
   // Week data — kept for week-mode header
   // (colDates / todayIdx are computed above, before the gesture refs)
   const nowSlot   = today.getHours() * 2 + (today.getMinutes() >= 30 ? 1 : 0);
@@ -1299,14 +1326,14 @@ export default function SchedulePage() {
                 {nearestMultiDayTaskBeforeView && (
                   <div
                     className={`pointer-events-none absolute z-20 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
-                    style={{ left: 0, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
+                    style={{ left: viewportStartPx, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
                     title={`Task gần nhất phía trước: ${nearestMultiDayTaskBeforeView.title}`}
                   />
                 )}
                 {nearestMultiDayTaskAfterView && (
                   <div
                     className={`pointer-events-none absolute z-20 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
-                    style={{ left: colCount * dayWidth - 4, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
+                    style={{ left: viewportEndPx - 4, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
                     title={`Task gần nhất phía sau: ${nearestMultiDayTaskAfterView.title}`}
                   />
                 )}
