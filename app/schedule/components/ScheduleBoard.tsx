@@ -1256,7 +1256,7 @@ export default function SchedulePage() {
           </div>
 
           {multiDayLaneHeight > 0 && (
-            <div className={`sticky top-[52px] z-20 flex ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
+            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
               <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center pt-1`} style={{ width: TIME_W }}>
                 {hasOverlappingMultiDayTasks && (
                   <button
