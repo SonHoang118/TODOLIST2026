@@ -4,146 +4,31 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   COLORS, DAY_W, DAY_W_MAX, DAY_W_MIN, DAY_W_STEP, DAYS, DEFAULT_TASK_BG,
   DEFAULT_TASK_LABEL, DRAG_DELTA, HANDLE_H, HEADER_H, INF_BUFFER, INF_CENTER,
-  LEGACY_DEFAULT_TASK_BG, LONG_PRESS_MS, PERSONAL_TASK_BG, PERSONAL_TASK_LABEL,
-  SLOT_H, SLOT_MS, SLOTS, STATUS_LABEL, TAILWIND_COLOR_TO_HEX, TASK_LABEL_TEXT,
-  TASK_TITLE_POOL, TIME_W,
+  LONG_PRESS_MS, PERSONAL_TASK_BG, PERSONAL_TASK_LABEL, SLOT_H, SLOT_MS, SLOTS,
+  STATUS_LABEL, TASK_LABEL_TEXT, TIME_W,
 } from "../lib/constants";
 import { absDayToDate, absDayToDateInput, currentTimeScrollTop, dateInputToAbsDay, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel, slotToTimeInput, timeInputToSlot } from "../lib/date";
 import { getMultiDayEndSlot, getMultiDayTaskLanes, isMultiDayTask, layoutMultiDayBars } from "../lib/multi-day";
 import { createAvatarPreview } from "../lib/avatar";
+import {
+  buildDateFromAbsDayAndSlot,
+  colorToPickerHex,
+  doneTaskBgClass,
+  ensureUniqueTaskIds,
+  isHexColor,
+  isTaskStatus,
+  maxTaskId,
+  normalizeTaskLabel,
+  randomTaskTitle,
+  resolveTaskBgClass,
+  taskLabelText,
+  withTaskAudit,
+  withTaskConfirmOnly,
+} from "../lib/domain/task";
+import { useScheduleTasks } from "../lib/hooks/use-schedule-tasks";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
 import type { ScheduleScope, SessionUser, Task, TaskLabelValue, TaskStatus } from "../lib/types";
-
-function taskSignature(tasks: Task[]): string {
-  return JSON.stringify(
-    tasks.map((task) => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      absDay: task.absDay,
-      endAbsDay: task.endAbsDay,
-      endSlotIndex: task.endSlotIndex,
-      slotIndex: task.slotIndex,
-      span: task.span,
-      color: task.color,
-      label: task.label,
-      status: task.status,
-      assignedFromName: task.assignedFromName,
-      createdByUserId: task.createdByUserId,
-      updatedByUserId: task.updatedByUserId,
-      confirmedByUserIds: [...task.confirmedByUserIds].sort((a, b) => a - b),
-    })),
-  );
-}
-
-function isTaskStatus(value: unknown): value is TaskStatus {
-  return value === "PENDING" || value === "IN_PROGRESS" || value === "DONE";
-}
-
-function normalizeTaskLabel(value: unknown): TaskLabelValue {
-  if (typeof value !== "string") return DEFAULT_TASK_LABEL;
-
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "personal" || normalized === "việc cá nhân" || normalized === "viec ca nhan") {
-    return PERSONAL_TASK_LABEL;
-  }
-
-  return DEFAULT_TASK_LABEL;
-}
-
-function taskLabelText(value: unknown): string {
-  return TASK_LABEL_TEXT[normalizeTaskLabel(value)];
-}
-
-function randomTaskTitle(): string {
-  const i = Math.floor(Math.random() * TASK_TITLE_POOL.length);
-  return TASK_TITLE_POOL[i] ?? "Công việc mới";
-}
-
-function maxTaskId(tasks: Task[]): number {
-  return tasks.reduce((max, task) => Math.max(max, task.id), 0);
-}
-
-function ensureUniqueTaskIds(tasks: Task[]): Task[] {
-  const seen = new Set<number>();
-  let nextId = maxTaskId(tasks);
-  let changed = false;
-
-  const normalized = tasks.map((task) => {
-    if (!seen.has(task.id)) {
-      seen.add(task.id);
-      return task;
-    }
-
-    changed = true;
-    nextId += 1;
-    seen.add(nextId);
-    return { ...task, id: nextId };
-  });
-
-  return changed ? normalized : tasks;
-}
-
-function buildDateFromAbsDayAndSlot(absDay: number, slotIndex: number): Date {
-  const date = absDayToDate(absDay);
-  const hours = Math.floor(slotIndex / 2);
-  const minutes = slotIndex % 2 === 0 ? 0 : 30;
-  date.setHours(hours, minutes, 0, 0);
-  return date;
-}
-
-function withTaskAudit(task: Task, actor: SessionUser | null): Task {
-  if (!actor) return task;
-
-  const confirmedSet = new Set<number>(task.confirmedByUserIds);
-  confirmedSet.add(actor.id);
-
-  return {
-    ...task,
-    updatedByUserId: actor.id,
-    updatedByName: actor.name,
-    updatedByAvatar: actor.avatar,
-    confirmedByUserIds: Array.from(confirmedSet),
-  };
-}
-
-function withTaskConfirmOnly(task: Task, actor: SessionUser | null): Task {
-  if (!actor) return task;
-  if (task.confirmedByUserIds.includes(actor.id)) return task;
-
-  return {
-    ...task,
-    confirmedByUserIds: [...task.confirmedByUserIds, actor.id],
-  };
-}
-
-function resolveTaskBgClass(taskColor: string, isDark: boolean): string {
-  if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) {
-    return isDark ? "bg-sky-700/80" : "bg-sky-500/85";
-  }
-  if (taskColor === PERSONAL_TASK_BG) {
-    return isDark ? "bg-emerald-700/75" : "bg-emerald-500/70";
-  }
-  return taskColor;
-}
-
-function isHexColor(value: string): boolean {
-  return /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-function colorToPickerHex(taskColor: string): string {
-  if (isHexColor(taskColor)) return taskColor;
-  if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) return "#3f3f46";
-  if (taskColor === PERSONAL_TASK_BG) return "#16a34a";
-  return TAILWIND_COLOR_TO_HEX[taskColor] ?? "#7c3aed";
-}
-
-function doneTaskBgClass(isDark: boolean): string {
-  return isDark
-    ? "bg-zinc-500/30 border border-zinc-300/60 brightness-90"
-    : "bg-zinc-400/35 border border-zinc-500/50 brightness-95";
-}
 
 type RgbColor = { r: number; g: number; b: number };
 
@@ -217,7 +102,7 @@ function slotGradientTextColor(slot: number, isDark: boolean): string {
 
 export default function SchedulePage() {
   const [viewMode, setViewMode] = useState<"SCHEDULE" | "TASK_LIST">("SCHEDULE");
-  const [tasks, setTasks]                 = useState<Task[]>([]);
+  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks();
   const [weekOffset, setWeekOffset]       = useState(0);
   const [draggingId, setDraggingId]       = useState<number | null>(null);
   const [longPressedId, setLongPressedId] = useState<number | null>(null);
@@ -243,7 +128,6 @@ export default function SchedulePage() {
   const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
   const [horizontalViewport, setHorizontalViewport] = useState({ left: 0, width: 0 });
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
-  const [isScheduleLoading] = useState(false);
   const [isInteractionLocked, setIsInteractionLocked] = useState(false);
   const [enteringTaskId, setEnteringTaskId] = useState<number | null>(null);
   const [isTaskExitActive, setIsTaskExitActive] = useState(false);

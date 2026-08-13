@@ -37,6 +37,22 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Neon user storage
 
+## Schedule data architecture
+
+The schedule is local-first while the cloud data layer is being built. Tasks are stored in the browser and are synchronized between open tabs. The boundaries are deliberately separated so a server adapter can replace the browser adapter without changing UI or task business rules.
+
+```
+ScheduleBoard → useScheduleTasks → ScheduleTaskRepository
+                                      └─ BrowserScheduleTaskRepository (current)
+                                      └─ ApiScheduleTaskRepository (future)
+```
+
+- `app/schedule/lib/domain/`: pure task rules, normalizers, and presentation helpers.
+- `app/schedule/lib/repositories/`: persistence contract and browser implementation.
+- `app/schedule/lib/hooks/`: client state lifecycle, hydration, debounce, and cross-tab updates.
+
+The current browser snapshot key is `todolist:schedule-tasks:v1`. When cloud sync is introduced, implement `ScheduleTaskRepository` with conflict/version handling and swap the hook's adapter.
+
 Set environment variable:
 
 ```bash
