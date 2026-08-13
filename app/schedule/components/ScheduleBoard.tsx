@@ -1284,8 +1284,8 @@ export default function SchedulePage() {
                     >
                       {/* Stays visible during horizontal scroll, but its task bar bounds the sticky area. */}
                       <div
-                        className={`sticky left-0 z-10 flex h-full w-full min-w-0 items-center rounded-l-lg px-1 ${backgroundClass}`}
-                        style={{ backgroundColor }}
+                        className={`sticky z-10 flex h-full w-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
+                        style={{ left: TIME_W, backgroundColor }}
                       >
                         {canToggleDone && (
                           <button
