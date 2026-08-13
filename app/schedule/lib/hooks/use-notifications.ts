@@ -39,5 +39,15 @@ export function useNotifications(userId: number | null) {
     }
   }, [notifications, userId]);
 
-  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, isMarkingAllRead, recentlyReadCount, markAllRead };
+  const markRead = useCallback(async (notificationId: number) => {
+    if (userId === null || notifications.find((item) => item.id === notificationId)?.isRead) return;
+    setNotifications((items) => items.map((item) => item.id === notificationId ? { ...item, isRead: true } : item));
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, ids: [notificationId] }),
+    });
+  }, [notifications, userId]);
+
+  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, isMarkingAllRead, recentlyReadCount, markAllRead, markRead };
 }

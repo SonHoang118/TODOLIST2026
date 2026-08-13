@@ -144,7 +144,7 @@ export default function SchedulePage() {
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
   const { tasks, setTasks, isLoading: isScheduleLoading, isSaving: isScheduleSaving } = useScheduleTasks(scheduleScope, authUserId);
-  const { notifications, unreadCount, isMarkingAllRead, recentlyReadCount, markAllRead } = useNotifications(sessionUser?.id ?? null);
+  const { notifications, unreadCount, isMarkingAllRead, markAllRead, markRead } = useNotifications(sessionUser?.id ?? null);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
@@ -1092,6 +1092,7 @@ export default function SchedulePage() {
   };
 
   const handleNotificationTaskClick = (notification: AppNotification) => {
+    void markRead(notification.id);
     if (notification.taskId === null) return;
     const legacyOwner = notification.kind === "ASSIGNED"
       ? notification.recipientUserId
@@ -1848,13 +1849,13 @@ export default function SchedulePage() {
             </div>
             <button type="button" onClick={() => setNotificationsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`} aria-label="Đóng thông báo">✕</button>
           </div>
-          {(unreadCount > 0 || recentlyReadCount > 0) && <div className={`px-4 py-2.5 border-b ${th.border}`}>
+          {notifications.length > 0 && <div className={`flex h-10 items-center px-4 border-b ${th.border}`}>
             {unreadCount > 0 ? (
               <button type="button" onClick={() => void markAllRead()} className="text-xs font-medium text-violet-400 hover:text-violet-300">Đánh dấu tất cả là đã đọc</button>
             ) : (
               <p className={`flex items-center gap-2 text-xs ${th.subtext}`}>
                 {isMarkingAllRead && <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" aria-label="Đang cập nhật" />}
-                Có {recentlyReadCount} thông báo đã được đọc
+                Có {notifications.length} thông báo đã được đọc
               </p>
             )}
           </div>}
