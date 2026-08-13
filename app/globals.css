@@ -28,23 +28,16 @@ body {
 @keyframes scheduleTaskEnter {
   0% {
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
-    filter: blur(1px);
-  }
-  60% {
-    opacity: 1;
-    transform: translateY(-1px) scale(1.004);
-    filter: blur(0);
+    transform: scale(0.94);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
+    transform: scale(1);
   }
 }
 
 .schedule-task-enter {
-  animation: scheduleTaskEnter 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: scheduleTaskEnter 260ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, opacity;
 }
 

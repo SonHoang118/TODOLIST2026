@@ -238,9 +238,9 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
-  const [isScheduleLoading, setIsScheduleLoading] = useState(false);
-  const [isInteractionLocked, setIsInteractionLocked] = useState(true);
-  const [isTaskEntranceActive, setIsTaskEntranceActive] = useState(false);
+  const [isScheduleLoading] = useState(false);
+  const [isInteractionLocked, setIsInteractionLocked] = useState(false);
+  const [enteringTaskId, setEnteringTaskId] = useState<number | null>(null);
   const [isTaskExitActive, setIsTaskExitActive] = useState(false);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
   const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
@@ -288,6 +288,7 @@ export default function SchedulePage() {
   resizingIdRef.current = resizingId;
 
   const scrollRef    = useRef<HTMLDivElement>(null);
+  const scheduleScrollPositionRef = useRef({ left: 0, top: 0 });
   const taskEls      = useRef<Map<number, HTMLDivElement>>(new Map());
   const resizeSpanRef = useRef(1);
 
@@ -382,15 +383,15 @@ export default function SchedulePage() {
     if (gs.current.timer) { clearTimeout(gs.current.timer); gs.current.timer = null; }
   };
 
-  const triggerTaskEntranceAnimation = () => {
+  const triggerTaskEntranceAnimation = (taskId: number) => {
     if (taskEntranceTimerRef.current) {
       clearTimeout(taskEntranceTimerRef.current);
       taskEntranceTimerRef.current = null;
     }
 
-    setIsTaskEntranceActive(true);
+    setEnteringTaskId(taskId);
     taskEntranceTimerRef.current = setTimeout(() => {
-      setIsTaskEntranceActive(false);
+      setEnteringTaskId(null);
       taskEntranceTimerRef.current = null;
     }, 700);
   };
@@ -406,7 +407,7 @@ export default function SchedulePage() {
     }
 
     lockInteractions();
-    setIsTaskEntranceActive(false);
+    setEnteringTaskId(null);
     setIsTaskExitActive(true);
 
     taskExitTimerRef.current = setTimeout(() => {
@@ -421,7 +422,8 @@ export default function SchedulePage() {
       clearTimeout(interactionUnlockTimerRef.current);
       interactionUnlockTimerRef.current = null;
     }
-    setIsInteractionLocked(true);
+    // Loading locks are intentionally disabled while schedule data is local.
+    setIsInteractionLocked(false);
   };
 
   const unlockInteractionsAfter = (delayMs: number) => {
@@ -864,7 +866,7 @@ export default function SchedulePage() {
               updatedByAvatar: actorUser?.avatar ?? null,
               confirmedByUserIds: actorUser ? [actorUser.id] : [],
             }]);
-            triggerTaskEntranceAnimation();
+            triggerTaskEntranceAnimation(id);
             fn.current.setResizingId(id);
             fn.current.setBadge("Kéo thanh để điều chỉnh thời lượng");
           }
@@ -950,11 +952,7 @@ export default function SchedulePage() {
 
   useEffect(() => {
     void loadAuthUsers();
-    // Unlock interactions after a short delay to allow initial render
-    const timer = setTimeout(() => {
-      setIsInteractionLocked(false);
-    }, 300);
-    return () => clearTimeout(timer);
+    setIsInteractionLocked(false);
   }, []);
 
   const loadAuthUsers = async () => {
@@ -968,10 +966,6 @@ export default function SchedulePage() {
     const activeUser = fallbackUsers[0] ?? null;
     setSessionUser(activeUser);
     setAuthUserId(activeUser?.id ?? null);
-  };
-
-  const loadTasks = async () => {
-    setIsScheduleLoading(false);
   };
 
   const handleViewUserChange = (nextUserId: number) => {
@@ -1039,6 +1033,25 @@ export default function SchedulePage() {
     });
   }, [infiniteScroll, dayWidth]);
 
+  useLayoutEffect(() => {
+    if (viewMode !== "SCHEDULE") return;
+
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo(scheduleScrollPositionRef.current);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [viewMode]);
+
+  const toggleViewMode = () => {
+    if (viewMode === "SCHEDULE" && scrollRef.current) {
+      scheduleScrollPositionRef.current = {
+        left: scrollRef.current.scrollLeft,
+        top: scrollRef.current.scrollTop,
+      };
+    }
+    setViewMode((mode) => mode === "SCHEDULE" ? "TASK_LIST" : "SCHEDULE");
+  };
+
   // Week data — kept for week-mode header
   // (colDates / todayIdx are computed above, before the gesture refs)
   const nowSlot   = today.getHours() * 2 + (today.getMinutes() >= 30 ? 1 : 0);
@@ -1087,7 +1100,7 @@ export default function SchedulePage() {
       <header className={`relative flex items-center gap-1 px-3 py-2 pr-12 ${th.hdrBg} border-b ${th.border} shrink-0`}>
         <button
           type="button"
-          onClick={() => setViewMode((mode) => mode === "SCHEDULE" ? "TASK_LIST" : "SCHEDULE")}
+          onClick={toggleViewMode}
           className={`z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${viewMode === "TASK_LIST" ? "bg-violet-600 text-white" : th.btnSecondary}`}
           aria-label={viewMode === "SCHEDULE" ? "Chuyển sang danh sách công việc" : "Chuyển sang lịch"}
           title={viewMode === "SCHEDULE" ? "Danh sách công việc" : "Xem lịch"}
@@ -1268,7 +1281,7 @@ export default function SchedulePage() {
               )}
 
               {/* Task blocks */}
-              {tasks.map((task, taskIndex) => {
+              {tasks.map((task) => {
                 const colIdx = task.absDay - viewStartAbsDay;
                 if (colIdx < 0 || colIdx >= colCount) return null; // outside current view
                 const isDraggingThis = draggingId    === task.id;
@@ -1340,7 +1353,7 @@ export default function SchedulePage() {
 
                 const taskAnimationClass = isTaskExitActive
                   ? "schedule-task-exit"
-                  : isTaskEntranceActive
+                  : enteringTaskId === task.id
                   ? "schedule-task-enter"
                   : "";
 
@@ -1358,11 +1371,7 @@ export default function SchedulePage() {
                       borderRadius: 8,
                       zIndex:     isDraggingThis ? 20 : isResizing ? 15 : 5,
                       transition: gs.current.isResizeDragging ? "none" : "height 0.15s ease",
-                      animationDelay: taskAnimationClass === "schedule-task-enter"
-                        ? `${Math.min(taskIndex * 28, 280)}ms`
-                        : taskAnimationClass === "schedule-task-exit"
-                        ? `${Math.min(taskIndex * 12, 120)}ms`
-                        : undefined,
+                      animationDelay: taskAnimationClass === "schedule-task-exit" ? "0ms" : undefined,
                       animationFillMode: taskAnimationClass ? "both" : undefined,
                       touchAction: "pan-x pan-y", // allow scrolling even when touch starts on a task
                   }}
