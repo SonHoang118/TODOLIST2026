@@ -63,7 +63,7 @@ Then update `DATABASE_URL` in `.env.local` with your Neon connection string.
 
 ## Đồng bộ lịch cho nhiều người
 
-Lịch dùng Neon Postgres làm nguồn dữ liệu chung và Ably để đẩy thay đổi tức thì giữa các trình duyệt. Tạo một ứng dụng ở Ably rồi thêm khóa API vào `.env.local` (không đưa khóa này lên Git):
+Lịch dùng Neon Postgres làm nguồn dữ liệu chung và Ably để đẩy thay đổi tức thì giữa các trình duyệt. Mỗi người có một lịch riêng theo `userId`; lịch công ty là một lịch chung khác. Tạo một ứng dụng ở Ably rồi thêm khóa API vào `.env.local` (không đưa khóa này lên Git):
 
 ```bash
 ABLY_API_KEY=your-ably-api-key

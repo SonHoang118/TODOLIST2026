@@ -2,10 +2,9 @@
 
 import * as Ably from "ably";
 import { ensureUniqueTaskIds } from "../domain/task";
-import type { Task } from "../types";
+import type { ScheduleScope, Task } from "../types";
 import type { ScheduleTaskRepository } from "./schedule-task-repository";
 
-const CHANNEL_NAME = "schedule:tasks";
 const LEGACY_STORAGE_KEY = "todolist:schedule-tasks:v1";
 
 type TaskEvent = { tasks: Task[]; deletedIds: number[] };
@@ -34,16 +33,16 @@ export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
   private channel: Ably.RealtimeChannel | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
+  constructor(private readonly scope: ScheduleScope, private readonly ownerId: number | null) {}
+
   async load(): Promise<Task[]> {
-    const response = await fetch("/api/schedule/tasks", { cache: "no-store" });
-    if (!response.ok) throw new Error("Không thể tải lịch chung.");
-    const cloudTasks = ensureUniqueTaskIds((await response.json()) as Task[]);
+    const cloudTasks = await this.fetchCloudTasks();
     if (cloudTasks.length > 0) {
       this.remember(cloudTasks);
       return cloudTasks;
     }
 
-    const legacyTasks = parseLegacyTasks();
+    const legacyTasks = this.scope === "USER" ? parseLegacyTasks() : [];
     if (legacyTasks.length > 0) {
       await this.write(legacyTasks);
       this.remember(legacyTasks);
@@ -60,7 +59,7 @@ export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
 
   subscribe(listener: (tasks: Task[]) => void): () => void {
     const client = new Ably.Realtime({ authUrl: "/api/realtime/token" });
-    const channel = client.channels.get(CHANNEL_NAME);
+    const channel = client.channels.get(this.channelName());
     const onMessage = (message: Ably.Message) => {
       const event = message.data as TaskEvent;
       if (!event || !Array.isArray(event.tasks) || !Array.isArray(event.deletedIds)) return;
@@ -107,7 +106,7 @@ export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
     const response = await fetch("/api/schedule/tasks", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changes, deletedIds }),
+      body: JSON.stringify({ changes, deletedIds, scope: this.scope, ownerId: this.ownerId }),
     });
     if (!response.ok) {
       const message = response.status === 409 ? "Lịch vừa được người khác thay đổi. Đang tải lại dữ liệu mới nhất." : "Không thể lưu lịch chung.";
@@ -125,8 +124,12 @@ export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
   }
 
   private async fetchCloudTasks(): Promise<Task[]> {
-    const response = await fetch("/api/schedule/tasks", { cache: "no-store" });
+    const response = await fetch(`/api/schedule/tasks?${new URLSearchParams({ scope: this.scope, ...(this.scope === "USER" && this.ownerId !== null ? { ownerId: String(this.ownerId) } : {}) })}`, { cache: "no-store" });
     if (!response.ok) throw new Error("Không thể tải lịch chung.");
     return ensureUniqueTaskIds((await response.json()) as Task[]);
+  }
+
+  private channelName(): string {
+    return this.scope === "COMPANY" ? "schedule:company" : `schedule:user:${this.ownerId}`;
   }
 }

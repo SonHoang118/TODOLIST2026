@@ -102,7 +102,6 @@ function slotGradientTextColor(slot: number, isDark: boolean): string {
 
 export default function SchedulePage() {
   const [viewMode, setViewMode] = useState<"SCHEDULE" | "TASK_LIST">("SCHEDULE");
-  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks();
   const [weekOffset, setWeekOffset]       = useState(0);
   const [draggingId, setDraggingId]       = useState<number | null>(null);
   const [longPressedId, setLongPressedId] = useState<number | null>(null);
@@ -136,6 +135,7 @@ export default function SchedulePage() {
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
+  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks(scheduleScope, authUserId);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);

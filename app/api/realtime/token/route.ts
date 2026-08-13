@@ -9,7 +9,7 @@ export async function GET() {
   const client = new Ably.Rest(key);
   const tokenRequest = await client.auth.createTokenRequest({
     clientId: crypto.randomUUID(),
-    capability: { "schedule:tasks": ["subscribe"] },
+    capability: { "schedule:*": ["subscribe"] },
   });
   return Response.json(tokenRequest, { headers: { "Cache-Control": "no-store" } });
 }
