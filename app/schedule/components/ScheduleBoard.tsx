@@ -127,7 +127,7 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<number | null>(null);
+  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null } | null>(null);
   const [highlightedNotificationTaskId, setHighlightedNotificationTaskId] = useState<number | null>(null);
   const [isNotificationNavigating, setIsNotificationNavigating] = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
@@ -1091,23 +1091,38 @@ export default function SchedulePage() {
   };
 
   const handleNotificationTaskClick = (notification: AppNotification) => {
-    const task = notification.taskId === null ? null : tasks.find((item) => item.id === notification.taskId);
-    // Notifications can belong to the company calendar or another person's calendar.
-    // Only move within the calendar the user is currently authorised to view as their own.
-    if (!isViewingOwnSchedule || !task) return;
+    if (notification.taskId === null) return;
+    const legacyOwner = notification.kind === "ASSIGNED"
+      ? notification.recipientUserId
+      : usersForAuth.find((user) => user.name === notification.actorName)?.id ?? null;
+    const targetScope = notification.taskScope ?? (notification.kind === "COMPANY_CREATED" || notification.kind === "COMPANY_CONFIRMED" ? "COMPANY" : "USER");
+    const targetOwnerId = notification.taskOwnerUserId ?? legacyOwner;
+    if (targetScope === "USER" && targetOwnerId === null) return;
     setIsNotificationNavigating(true);
     setNotificationsOpen(false);
     setViewMode("SCHEDULE");
-    setNotificationTaskToFocus(task.id);
-    if (isMultiDayTask(task) && !isMultiDayLaneExpanded) setIsMultiDayLaneExpanded(true);
+    setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null });
+    if (targetScope !== scheduleScope) setScheduleScope(targetScope);
+    if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
     if (!infiniteScroll) setInfiniteScroll(true);
   };
 
   useLayoutEffect(() => {
-    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll) return;
-    const task = tasks.find((item) => item.id === notificationTaskToFocus);
+    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading) return;
+    if (scheduleScope !== notificationTaskToFocus.scope || (scheduleScope === "USER" && authUserId !== notificationTaskToFocus.ownerId)) return;
+    const task = tasks.find((item) => item.id === notificationTaskToFocus.taskId);
     const container = scrollRef.current;
-    if (!task || !container) return;
+    if (!task || !container) {
+      if (!task) {
+        setNotificationTaskToFocus(null);
+        setIsNotificationNavigating(false);
+      }
+      return;
+    }
+    if (isMultiDayTask(task) && !isMultiDayLaneExpanded) {
+      setIsMultiDayLaneExpanded(true);
+      return;
+    }
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const targetDay = task.absDay - viewStartAbsDay;
     const targetLeft = TIME_W + targetDay * dayWidth + dayWidth / 2 - container.clientWidth / 2;
@@ -1144,7 +1159,7 @@ export default function SchedulePage() {
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, multiDayTaskLanes, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
+  }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
@@ -1845,7 +1860,7 @@ export default function SchedulePage() {
               const borderColor = notification.kind === "ASSIGNED" ? "border-violet-500/50" : notification.kind === "ACCEPTED" ? "border-amber-500/50" : notification.kind === "COMPLETED" ? "border-emerald-500/50" : notification.kind === "COMPANY_CREATED" ? "border-sky-500/50" : "border-rose-500/50";
               const actor = usersForAuth.find((user) => user.name === notification.actorName);
               const actorInitial = (notification.actorName ?? "H").trim().charAt(0).toUpperCase() || "H";
-              const canOpenTask = isViewingOwnSchedule && notification.taskId !== null && tasks.some((task) => task.id === notification.taskId);
+              const canOpenTask = notification.taskId !== null;
               return <article key={notification.id} onClick={() => handleNotificationTaskClick(notification)} className={`mx-3 mb-2 flex gap-2.5 rounded-xl border border-l-4 px-3 py-3 ${borderColor} ${canOpenTask ? "cursor-pointer transition hover:-translate-y-0.5 hover:brightness-110" : "cursor-default"} ${notification.isRead ? "opacity-70" : isDark ? "bg-violet-950/30" : "bg-violet-50"}`}>
                 {actor?.avatar ? (
                   <img src={actor.avatar} alt={notification.actorName ?? "Người thực hiện"} className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />

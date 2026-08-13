@@ -21,8 +21,11 @@ async function ensureTable(): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS schedule_notifications (
     id BIGSERIAL PRIMARY KEY, recipient_user_id BIGINT NOT NULL, kind TEXT NOT NULL,
     title TEXT NOT NULL, body TEXT NOT NULL, actor_name TEXT, task_id BIGINT,
+    task_scope TEXT, task_owner_user_id BIGINT,
     is_read BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
+  await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_scope TEXT`;
+  await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_owner_user_id BIGINT`;
 }
 
 function parseContext(value: TaskContext): { scope: ScheduleScope; ownerId: number | null; scopeKey: string } | null {
@@ -53,10 +56,10 @@ async function publish(context: { scope: ScheduleScope; ownerId: number | null }
   await client.channels.get(channelName(context)).publish("tasks.changed", { tasks, deletedIds });
 }
 
-async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number): Promise<void> {
+async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number, taskScope: ScheduleScope, taskOwnerUserId: number | null): Promise<void> {
   if (!recipientUserId || recipientUserId < 1) return;
-  await sql`INSERT INTO schedule_notifications (recipient_user_id, kind, title, body, actor_name, task_id)
-    VALUES (${recipientUserId}, ${kind}, ${title}, ${body}, ${actorName}, ${taskId})`;
+  await sql`INSERT INTO schedule_notifications (recipient_user_id, kind, title, body, actor_name, task_id, task_scope, task_owner_user_id)
+    VALUES (${recipientUserId}, ${kind}, ${title}, ${body}, ${actorName}, ${taskId}, ${taskScope}, ${taskOwnerUserId})`;
 }
 
 async function userIdByName(name: string | null): Promise<number | null> {
@@ -68,26 +71,26 @@ async function userIdByName(name: string | null): Promise<number | null> {
 async function createNotifications(context: { scope: ScheduleScope; ownerId: number | null }, task: Task, previous: Task | null): Promise<void> {
   const actorName = task.updatedByName ?? task.createdByName;
   if (!previous && context.scope === "USER" && context.ownerId !== task.createdByUserId && task.assignedFromName) {
-    await notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id);
+    await notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id, context.scope, context.ownerId);
     return;
   }
   if (!previous && context.scope === "COMPANY") {
     const users = await sql`SELECT id FROM schedule_users WHERE id <> ${task.createdByUserId ?? -1}` as Array<{ id: string | number }>;
-    await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id)));
+    await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id, context.scope, null)));
     return;
   }
   if (context.scope === "USER" && previous?.status === "PENDING" && task.status === "IN_PROGRESS") {
-    await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id);
+    await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id, context.scope, context.ownerId);
   }
   if (context.scope === "USER" && previous?.status !== "DONE" && task.status === "DONE") {
-    await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id);
+    await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id, context.scope, context.ownerId);
   }
   if (context.scope === "COMPANY") {
     const newlyConfirmedBy = task.confirmedByUserIds.find((id) => !previous?.confirmedByUserIds.includes(id));
     if (newlyConfirmedBy && newlyConfirmedBy !== task.createdByUserId) {
       const users = await sql`SELECT name FROM schedule_users WHERE id = ${newlyConfirmedBy} LIMIT 1` as Array<{ name: string }>;
       const confirmerName = users[0]?.name ?? "Một đồng nghiệp";
-      await notify(task.createdByUserId, "COMPANY_CONFIRMED", "Task lịch công ty đã được xác nhận", `${confirmerName} đã xác nhận: ${task.title}`, confirmerName, task.id);
+      await notify(task.createdByUserId, "COMPANY_CONFIRMED", "Task lịch công ty đã được xác nhận", `${confirmerName} đã xác nhận: ${task.title}`, confirmerName, task.id, context.scope, null);
     }
   }
 }

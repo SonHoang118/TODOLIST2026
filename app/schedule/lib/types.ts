@@ -45,6 +45,8 @@ export interface AppNotification {
   body: string;
   actorName: string | null;
   taskId: number | null;
+  taskScope: ScheduleScope | null;
+  taskOwnerUserId: number | null;
   isRead: boolean;
   createdAt: string;
 }
