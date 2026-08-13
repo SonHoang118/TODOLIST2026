@@ -471,6 +471,14 @@ export default function SchedulePage() {
         return;
       }
 
+      // The multi-day lane overlays the calendar grid. Empty lane space is not a
+      // time slot, so it must not fall through to the quick-create gesture.
+      if (el?.closest("[data-multi-day-lane]") && !el?.closest("[data-task-id]")) {
+        e.preventDefault();
+        clearTimer();
+        return;
+      }
+
       // ── Pinch to zoom (2 fingers) ──────────────────────────────────────────
       if (e.touches.length === 2) {
         e.preventDefault();
@@ -1203,7 +1211,7 @@ export default function SchedulePage() {
           </div>
 
           {multiDayLaneHeight > 0 && (
-            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
+            <div data-multi-day-lane className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
               <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center pt-1`} style={{ width: TIME_W }}>
                 {hasOverlappingMultiDayTasks && (
                   <button
