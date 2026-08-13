@@ -18,6 +18,11 @@ async function ensureTable(): Promise<void> {
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (scope_key, id)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS schedule_notifications (
+    id BIGSERIAL PRIMARY KEY, recipient_user_id BIGINT NOT NULL, kind TEXT NOT NULL,
+    title TEXT NOT NULL, body TEXT NOT NULL, actor_name TEXT, task_id BIGINT,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`;
 }
 
 function parseContext(value: TaskContext): { scope: ScheduleScope; ownerId: number | null; scopeKey: string } | null {
@@ -48,6 +53,45 @@ async function publish(context: { scope: ScheduleScope; ownerId: number | null }
   await client.channels.get(channelName(context)).publish("tasks.changed", { tasks, deletedIds });
 }
 
+async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number): Promise<void> {
+  if (!recipientUserId || recipientUserId < 1) return;
+  await sql`INSERT INTO schedule_notifications (recipient_user_id, kind, title, body, actor_name, task_id)
+    VALUES (${recipientUserId}, ${kind}, ${title}, ${body}, ${actorName}, ${taskId})`;
+}
+
+async function userIdByName(name: string | null): Promise<number | null> {
+  if (!name) return null;
+  const rows = await sql`SELECT id FROM schedule_users WHERE name = ${name} LIMIT 1` as Array<{ id: string | number }>;
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+async function createNotifications(context: { scope: ScheduleScope; ownerId: number | null }, task: Task, previous: Task | null): Promise<void> {
+  const actorName = task.updatedByName ?? task.createdByName;
+  if (!previous && context.scope === "USER" && context.ownerId !== task.createdByUserId && task.assignedFromName) {
+    await notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id);
+    return;
+  }
+  if (!previous && context.scope === "COMPANY") {
+    const users = await sql`SELECT id FROM schedule_users WHERE id <> ${task.createdByUserId ?? -1}` as Array<{ id: string | number }>;
+    await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id)));
+    return;
+  }
+  if (context.scope === "USER" && previous?.status === "PENDING" && task.status === "IN_PROGRESS") {
+    await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id);
+  }
+  if (context.scope === "USER" && previous?.status !== "DONE" && task.status === "DONE") {
+    await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id);
+  }
+  if (context.scope === "COMPANY") {
+    const newlyConfirmedBy = task.confirmedByUserIds.find((id) => !previous?.confirmedByUserIds.includes(id));
+    if (newlyConfirmedBy && newlyConfirmedBy !== task.createdByUserId) {
+      const users = await sql`SELECT name FROM schedule_users WHERE id = ${newlyConfirmedBy} LIMIT 1` as Array<{ name: string }>;
+      const confirmerName = users[0]?.name ?? "Một đồng nghiệp";
+      await notify(task.createdByUserId, "COMPANY_CONFIRMED", "Task lịch công ty đã được xác nhận", `${confirmerName} đã xác nhận: ${task.title}`, confirmerName, task.id);
+    }
+  }
+}
+
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const context = parseContext({ scope: params.get("scope") as ScheduleScope | null ?? undefined, ownerId: params.has("ownerId") ? Number(params.get("ownerId")) : null });
@@ -76,15 +120,23 @@ export async function PUT(request: Request) {
   try {
     for (const task of changes) {
       const previousVersion = task.version ?? 0;
+      const previousRows = previousVersion > 0
+        ? await sql`SELECT id, data, version FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${task.id} LIMIT 1` as StoredRow[]
+        : [];
+      const previous = previousRows[0] ? rowToTask(previousRows[0]) : null;
       const data = { ...task };
       delete data.version;
       if (previousVersion === 0) {
         const rows = (await sql`INSERT INTO schedule_task_entries (scope_key, id, data) VALUES (${context.scopeKey}, ${task.id}, ${JSON.stringify(data)}::jsonb) RETURNING id, data, version`) as StoredRow[];
-        saved.push(rowToTask(rows[0]!));
+        const savedTask = rowToTask(rows[0]!);
+        saved.push(savedTask);
+        await createNotifications(context, savedTask, previous);
       } else {
         const rows = (await sql`UPDATE schedule_task_entries SET data = ${JSON.stringify(data)}::jsonb, version = version + 1, updated_at = NOW() WHERE scope_key = ${context.scopeKey} AND id = ${task.id} AND version = ${previousVersion} RETURNING id, data, version`) as StoredRow[];
         if (rows.length === 0) return Response.json({ error: "Task was changed by another user." }, { status: 409 });
-        saved.push(rowToTask(rows[0]!));
+        const savedTask = rowToTask(rows[0]!);
+        saved.push(savedTask);
+        await createNotifications(context, savedTask, previous);
       }
     }
     for (const id of deletedIds) {

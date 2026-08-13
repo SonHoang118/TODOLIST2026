@@ -35,6 +35,20 @@ export type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 export type TaskLabelValue = "DEFAULT" | "PERSONAL";
 export type ScheduleScope = "USER" | "COMPANY";
 
+export type NotificationKind = "ASSIGNED" | "ACCEPTED" | "COMPLETED" | "COMPANY_CREATED" | "COMPANY_CONFIRMED";
+
+export interface AppNotification {
+  id: number;
+  recipientUserId: number;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  actorName: string | null;
+  taskId: number | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface ScheduleTheme {
   root: string;
   hdrBg: string;
