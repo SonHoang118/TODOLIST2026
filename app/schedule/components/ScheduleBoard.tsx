@@ -1292,18 +1292,41 @@ export default function SchedulePage() {
                   const isDone = !isCompanySchedule && task.status === "DONE";
                   const backgroundColor = isHexColor(task.color) ? task.color : undefined;
                   const backgroundClass = isDone ? doneTaskBgClass(isDark) : resolveTaskBgClass(task.color, isDark);
+                  const canToggleDone = !isCompanySchedule
+                    && isViewingOwnSchedule
+                    && (task.status === "IN_PROGRESS" || task.status === "DONE");
                   return (
-                    <button
+                    <div
                       key={task.id}
-                      type="button"
                       data-task-id={task.id}
-                      onClick={() => setReviewTaskId(task.id)}
-                      className={`absolute z-10 flex items-center rounded-lg px-2 text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
+                      className={`absolute z-10 flex items-center rounded-lg px-1 text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
-                      title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
                     >
-                      <span className="truncate">{task.title}</span>
-                    </button>
+                      {canToggleDone && (
+                        <button
+                          type="button"
+                          data-action="complete"
+                          data-task-id={task.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            applyTaskAction("complete", task.id);
+                          }}
+                          className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                          title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                          aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                        >
+                          {isDone && <span className="text-[10px] leading-none text-emerald-200">✓</span>}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setReviewTaskId(task.id)}
+                        className="min-w-0 flex-1 text-left"
+                        title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
+                      >
+                        <span className={`block truncate ${isDone ? "line-through" : ""}`}>{task.title}</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
