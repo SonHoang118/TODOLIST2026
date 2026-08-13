@@ -128,6 +128,7 @@ export default function SchedulePage() {
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<number | null>(null);
+  const [highlightedNotificationTaskId, setHighlightedNotificationTaskId] = useState<number | null>(null);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
   const [horizontalViewport, setHorizontalViewport] = useState({ left: 0, width: 0 });
@@ -154,6 +155,7 @@ export default function SchedulePage() {
   const taskExitTimerRef                   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -1111,16 +1113,34 @@ export default function SchedulePage() {
       ? HEADER_H + ((multiDayTaskLanes.get(task.id) ?? 0) * 36) + 18
       : HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2;
     const targetTop = taskCenterY - container.clientHeight / 2;
+    let hasHighlighted = false;
+    let fallbackHighlightTimer: number | null = null;
+    const highlightTask = () => {
+      if (hasHighlighted) return;
+      hasHighlighted = true;
+      if (notificationHighlightTimerRef.current) clearTimeout(notificationHighlightTimerRef.current);
+      setHighlightedNotificationTaskId(task.id);
+      notificationHighlightTimerRef.current = setTimeout(() => {
+        setHighlightedNotificationTaskId(null);
+        notificationHighlightTimerRef.current = null;
+      }, 720);
+    };
     const frame = requestAnimationFrame(() => {
       container.scrollTo({
         left: Math.max(0, targetLeft),
         top: Math.max(0, targetTop),
         behavior: prefersReducedMotion ? "auto" : "smooth",
       });
+      container.addEventListener("scrollend", highlightTask, { once: true });
+      fallbackHighlightTimer = window.setTimeout(highlightTask, prefersReducedMotion ? 30 : 900);
       setBadge(`Đang xem: ${task.title}`);
       setNotificationTaskToFocus(null);
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (fallbackHighlightTimer) clearTimeout(fallbackHighlightTimer);
+      container.removeEventListener("scrollend", highlightTask);
+    };
   }, [dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, multiDayTaskLanes, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
 
   return (
@@ -1340,7 +1360,7 @@ export default function SchedulePage() {
                     <div
                       key={task.id}
                       data-task-id={task.id}
-                      className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
+                    className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""} ${backgroundClass}`}
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
                     >
                       <div
@@ -1520,7 +1540,7 @@ export default function SchedulePage() {
                     key={task.id}
                     ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
                     data-task-id={task.id}
-                    className={`absolute overflow-hidden ${taskAnimationClass}`}
+                    className={`absolute overflow-hidden ${taskAnimationClass} ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""}`}
                     style={{
                       left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
