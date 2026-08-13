@@ -1095,6 +1095,7 @@ export default function SchedulePage() {
     setNotificationsOpen(false);
     setViewMode("SCHEDULE");
     setNotificationTaskToFocus(task.id);
+    if (isMultiDayTask(task) && !isMultiDayLaneExpanded) setIsMultiDayLaneExpanded(true);
     if (!infiniteScroll) setInfiniteScroll(true);
   };
 
@@ -1106,7 +1107,10 @@ export default function SchedulePage() {
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const targetDay = task.absDay - viewStartAbsDay;
     const targetLeft = TIME_W + targetDay * dayWidth + dayWidth / 2 - container.clientWidth / 2;
-    const targetTop = HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2 - container.clientHeight / 2;
+    const taskCenterY = isMultiDayTask(task)
+      ? HEADER_H + ((multiDayTaskLanes.get(task.id) ?? 0) * 36) + 18
+      : HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2;
+    const targetTop = taskCenterY - container.clientHeight / 2;
     const frame = requestAnimationFrame(() => {
       container.scrollTo({
         left: Math.max(0, targetLeft),
@@ -1117,7 +1121,7 @@ export default function SchedulePage() {
       setNotificationTaskToFocus(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [dayWidth, effSlotH, infiniteScroll, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
+  }, [dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, multiDayTaskLanes, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`}>
