@@ -28,6 +28,7 @@ import {
 import { useScheduleTasks } from "../lib/hooks/use-schedule-tasks";
 import { useScheduleUsers } from "../lib/hooks/use-schedule-users";
 import { useNotifications } from "../lib/hooks/use-notifications";
+import { usePushNotifications } from "../lib/hooks/use-push-notifications";
 import { readActiveUserId } from "../lib/session";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
@@ -145,6 +146,7 @@ export default function SchedulePage() {
   const [authBusy, setAuthBusy]           = useState(false);
   const { tasks, setTasks, isLoading: isScheduleLoading, isSaving: isScheduleSaving } = useScheduleTasks(scheduleScope, authUserId);
   const { notifications, unreadCount, isMarkingAllRead, markAllRead, markRead } = useNotifications(sessionUser?.id ?? null);
+  const pushNotifications = usePushNotifications(sessionUser?.id ?? null);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
@@ -1958,6 +1960,30 @@ export default function SchedulePage() {
                     e.currentTarget.value = "";
                   }}
                 />
+              </div>
+
+              <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3`}>
+                <p className="text-sm font-medium">Thông báo trên điện thoại</p>
+                <p className={`mt-1 text-xs ${th.subtext}`}>
+                  {pushNotifications.permission === "unsupported"
+                    ? "Trình duyệt hoặc thiết bị này chưa hỗ trợ thông báo đẩy."
+                    : pushNotifications.permission === "denied"
+                      ? "Bạn đã chặn thông báo. Hãy bật lại quyền trong cài đặt trình duyệt."
+                      : pushNotifications.isSubscribed
+                        ? "Đang nhận thông báo về việc được giao, cập nhật task và việc hôm nay lúc 6:00."
+                        : "Bật để nhận thông báo ngay cả khi DHS To do đang đóng."}
+                </p>
+                {sessionUser && pushNotifications.permission !== "unsupported" && pushNotifications.permission !== "denied" && (
+                  <button
+                    type="button"
+                    disabled={pushNotifications.isBusy}
+                    onClick={() => void (pushNotifications.isSubscribed ? pushNotifications.disable() : pushNotifications.enable())}
+                    className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${pushNotifications.isSubscribed ? "bg-zinc-700 text-zinc-200 hover:bg-zinc-600" : "bg-violet-600 text-white hover:bg-violet-500"}`}
+                  >
+                    {pushNotifications.isBusy ? "Đang xử lý..." : pushNotifications.isSubscribed ? "Tắt thông báo" : "Bật thông báo"}
+                  </button>
+                )}
+                {pushNotifications.error && <p className="mt-2 text-[11px] text-rose-400">{pushNotifications.error}</p>}
               </div>
 
               <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>

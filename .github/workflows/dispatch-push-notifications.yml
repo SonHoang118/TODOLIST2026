@@ -1,0 +1,21 @@
+name: Dispatch push notifications
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send due DHS To do notifications
+        env:
+          PUSH_DISPATCH_URL: ${{ secrets.PUSH_DISPATCH_URL }}
+          PUSH_CRON_SECRET: ${{ secrets.PUSH_CRON_SECRET }}
+        run: |
+          test -n "$PUSH_DISPATCH_URL"
+          test -n "$PUSH_CRON_SECRET"
+          curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer $PUSH_CRON_SECRET" \
+            "$PUSH_DISPATCH_URL"

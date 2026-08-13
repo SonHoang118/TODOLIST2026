@@ -107,3 +107,26 @@ curl -X POST http://localhost:3000/api/users \
 		"password": "123456"
 	}'
 ```
+# Thông báo đẩy trên điện thoại
+
+Ứng dụng gửi thông báo đẩy qua Web Push. Sau khi deploy, tạo cặp VAPID **một lần** bằng lệnh sau rồi lưu các giá trị trả về ở nơi an toàn:
+
+```powershell
+node -e "console.log(require('web-push').generateVAPIDKeys())"
+```
+
+Thêm các biến sau vào **Vercel → Project → Settings → Environment Variables** (Production và Preview nếu cần):
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`: `publicKey` từ lệnh trên.
+- `VAPID_PRIVATE_KEY`: `privateKey` từ lệnh trên.
+- `VAPID_SUBJECT`: ví dụ `mailto:email-cua-ban@example.com`.
+- `PUSH_CRON_SECRET`: một chuỗi ngẫu nhiên dài.
+
+Trong GitHub repository, thêm hai Actions secrets:
+
+- `PUSH_DISPATCH_URL`: `https://ten-mien-cua-ban.vercel.app/api/push/dispatch`
+- `PUSH_CRON_SECRET`: đúng bằng giá trị đã đặt trên Vercel.
+
+Workflow GitHub Actions chạy mỗi 5 phút, tạo thông báo trong app và gửi thông báo đẩy cho các cập nhật task đến hạn; lúc 06:00 (giờ Việt Nam) gửi danh sách task chưa hoàn thành của lịch cá nhân. GitHub có thể chạy lệch vài phút, nên các cập nhật task thường đến sau khoảng 5–10 phút.
+
+Trên điện thoại, đăng nhập đúng tài khoản, mở **Cài đặt** và bấm **Bật thông báo**. Với iPhone/iPad, trước đó cần thêm DHS To do vào Màn hình chính rồi mở từ icon của app.

@@ -1,5 +1,6 @@
 import * as Ably from "ably";
 import { sql } from "../../../lib/database";
+import { queuePushNotification } from "../../../lib/push-notifications";
 import type { ScheduleScope, Task } from "../../../schedule/lib/types";
 
 export const runtime = "nodejs";
@@ -58,8 +59,7 @@ async function publish(context: { scope: ScheduleScope; ownerId: number | null }
 
 async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number, taskScope: ScheduleScope, taskOwnerUserId: number | null): Promise<void> {
   if (!recipientUserId || recipientUserId < 1) return;
-  await sql`INSERT INTO schedule_notifications (recipient_user_id, kind, title, body, actor_name, task_id, task_scope, task_owner_user_id)
-    VALUES (${recipientUserId}, ${kind}, ${title}, ${body}, ${actorName}, ${taskId}, ${taskScope}, ${taskOwnerUserId})`;
+  await queuePushNotification(recipientUserId, { title, body, url: "/schedule", kind, actorName, taskId, taskScope, taskOwnerUserId });
 }
 
 async function userIdByName(name: string | null): Promise<number | null> {
