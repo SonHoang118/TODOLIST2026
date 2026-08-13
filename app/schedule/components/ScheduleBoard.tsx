@@ -129,6 +129,7 @@ export default function SchedulePage() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<number | null>(null);
   const [highlightedNotificationTaskId, setHighlightedNotificationTaskId] = useState<number | null>(null);
+  const [isNotificationNavigating, setIsNotificationNavigating] = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
   const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
   const [horizontalViewport, setHorizontalViewport] = useState({ left: 0, width: 0 });
@@ -1094,6 +1095,7 @@ export default function SchedulePage() {
     // Notifications can belong to the company calendar or another person's calendar.
     // Only move within the calendar the user is currently authorised to view as their own.
     if (!isViewingOwnSchedule || !task) return;
+    setIsNotificationNavigating(true);
     setNotificationsOpen(false);
     setViewMode("SCHEDULE");
     setNotificationTaskToFocus(task.id);
@@ -1114,7 +1116,6 @@ export default function SchedulePage() {
       : HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2;
     const targetTop = taskCenterY - container.clientHeight / 2;
     let hasHighlighted = false;
-    let fallbackHighlightTimer: number | null = null;
     const highlightTask = () => {
       if (hasHighlighted) return;
       hasHighlighted = true;
@@ -1122,6 +1123,7 @@ export default function SchedulePage() {
       setHighlightedNotificationTaskId(task.id);
       notificationHighlightTimerRef.current = setTimeout(() => {
         setHighlightedNotificationTaskId(null);
+        setIsNotificationNavigating(false);
         notificationHighlightTimerRef.current = null;
       }, 720);
     };
@@ -1132,19 +1134,20 @@ export default function SchedulePage() {
         behavior: prefersReducedMotion ? "auto" : "smooth",
       });
       container.addEventListener("scrollend", highlightTask, { once: true });
-      fallbackHighlightTimer = window.setTimeout(highlightTask, prefersReducedMotion ? 30 : 900);
+      // Keep this fallback independent from the navigation effect cleanup: setting the
+      // destination state to null re-renders immediately after the scroll starts.
+      window.setTimeout(highlightTask, prefersReducedMotion ? 30 : 1_200);
       setBadge(`Đang xem: ${task.title}`);
       setNotificationTaskToFocus(null);
     });
     return () => {
       cancelAnimationFrame(frame);
-      if (fallbackHighlightTimer) clearTimeout(fallbackHighlightTimer);
-      container.removeEventListener("scrollend", highlightTask);
     };
   }, [dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, multiDayTaskLanes, notificationTaskToFocus, tasks, viewMode, viewStartAbsDay]);
 
   return (
-    <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`}>
+    <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
+      {isNotificationNavigating && <div className="fixed inset-0 z-[60] cursor-wait" aria-label="Đang điều hướng đến công việc" />}
 
       {/* ── App header ───────────────────────────────────────────────────── */}
       <header className={`relative flex items-center gap-1 px-3 py-2 pr-20 ${th.hdrBg} border-b ${th.border} shrink-0`}>
