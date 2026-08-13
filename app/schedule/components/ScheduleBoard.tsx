@@ -1250,7 +1250,19 @@ export default function SchedulePage() {
 
           {multiDayLaneHeight > 0 && (
             <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight }}>
-              <div className={`${th.stickyBg} shrink-0 border-r ${th.border}`} style={{ width: TIME_W }} />
+              <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center border-r ${th.border} pt-1`} style={{ width: TIME_W }}>
+                {hasOverlappingMultiDayTasks && (
+                  <button
+                    type="button"
+                    onClick={() => setIsMultiDayLaneExpanded((expanded) => !expanded)}
+                    className={`flex h-7 w-8 items-center justify-center rounded-md border text-xs font-bold ${th.btnSecondary}`}
+                    aria-label={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : "Hiển thị toàn bộ task nhiều ngày"}
+                    title={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : `Hiển thị ${multiDayBars.length} task nhiều ngày`}
+                  >
+                    {isMultiDayLaneExpanded ? "▴" : "▾"}
+                  </button>
+                )}
+              </div>
               <div className="relative" style={{ width: colCount * dayWidth }}>
                 {Array.from({ length: colCount }, (_, day) => (
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
@@ -1282,16 +1294,6 @@ export default function SchedulePage() {
                     </button>
                   );
                 })}
-                {hasOverlappingMultiDayTasks && isMultiDayLaneExpanded && (
-                  <button
-                    type="button"
-                    onClick={() => setIsMultiDayLaneExpanded(false)}
-                    className={`absolute right-1 top-1 z-20 rounded-md border px-1.5 py-0.5 text-[9px] font-semibold ${th.btnSecondary}`}
-                    title="Thu gọn task nhiều ngày"
-                  >
-                    Thu gọn ▴
-                  </button>
-                )}
               </div>
             </div>
           )}
