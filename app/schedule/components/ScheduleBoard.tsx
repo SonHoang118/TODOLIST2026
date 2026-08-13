@@ -127,7 +127,8 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null } | null>(null);
+  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null; requiresLoad: boolean } | null>(null);
+  const [hasObservedNotificationLoad, setHasObservedNotificationLoad] = useState(false);
   const [highlightedNotificationTaskId, setHighlightedNotificationTaskId] = useState<number | null>(null);
   const [isNotificationNavigating, setIsNotificationNavigating] = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
@@ -1098,18 +1099,25 @@ export default function SchedulePage() {
     const targetScope = notification.taskScope ?? (notification.kind === "COMPANY_CREATED" || notification.kind === "COMPANY_CONFIRMED" ? "COMPANY" : "USER");
     const targetOwnerId = notification.taskOwnerUserId ?? legacyOwner;
     if (targetScope === "USER" && targetOwnerId === null) return;
+    const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
     setIsNotificationNavigating(true);
+    setHasObservedNotificationLoad(false);
     setNotificationsOpen(false);
     setViewMode("SCHEDULE");
-    setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null });
+    setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null, requiresLoad });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
     if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
     if (!infiniteScroll) setInfiniteScroll(true);
   };
 
+  useEffect(() => {
+    if (notificationTaskToFocus?.requiresLoad && isScheduleLoading) setHasObservedNotificationLoad(true);
+  }, [isScheduleLoading, notificationTaskToFocus?.requiresLoad]);
+
   useLayoutEffect(() => {
     if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading) return;
     if (scheduleScope !== notificationTaskToFocus.scope || (scheduleScope === "USER" && authUserId !== notificationTaskToFocus.ownerId)) return;
+    if (notificationTaskToFocus.requiresLoad && !hasObservedNotificationLoad) return;
     const task = tasks.find((item) => item.id === notificationTaskToFocus.taskId);
     const container = scrollRef.current;
     if (!task || !container) {
@@ -1142,7 +1150,8 @@ export default function SchedulePage() {
         notificationHighlightTimerRef.current = null;
       }, 560);
     };
-    const frame = requestAnimationFrame(() => {
+    const startTimer = window.setTimeout(() => {
+      const frame = requestAnimationFrame(() => {
       container.scrollTo({
         left: Math.max(0, targetLeft),
         top: Math.max(0, targetTop),
@@ -1155,11 +1164,13 @@ export default function SchedulePage() {
       window.setTimeout(highlightTask, prefersReducedMotion ? 30 : Math.min(2_500, Math.max(900, scrollDistance * 0.12)));
       setBadge(`Đang xem: ${task.title}`);
       setNotificationTaskToFocus(null);
-    });
+      });
+      void frame;
+    }, 420);
     return () => {
-      cancelAnimationFrame(frame);
+      clearTimeout(startTimer);
     };
-  }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
+  }, [authUserId, dayWidth, effSlotH, hasObservedNotificationLoad, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
