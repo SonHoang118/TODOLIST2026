@@ -40,3 +40,25 @@ export function isSameDay(first: Date, second: Date): boolean {
 export function currentTimeScrollTop(slotHeight: number): number {
   return Math.max(0, (new Date().getHours() * 2 - 3) * slotHeight);
 }
+
+export function absDayToDateInput(day: number): string {
+  const date = absDayToDate(day);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function dateInputToAbsDay(value: string): number | null {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : dateToAbsDay(date);
+}
+
+export function slotToTimeInput(slot: number): string {
+  return slotLabel(Math.max(0, Math.min(47, slot)));
+}
+
+export function timeInputToSlot(value: string): number | null {
+  const match = /^(\d{2}):(00|30)$/.exec(value);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  return hours >= 0 && hours <= 23 ? hours * 2 + (match[2] === "30" ? 1 : 0) : null;
+}

@@ -8,7 +8,8 @@ import {
   SLOT_H, SLOT_MS, SLOTS, STATUS_LABEL, TAILWIND_COLOR_TO_HEX, TASK_LABEL_TEXT,
   TASK_TITLE_POOL, TIME_W,
 } from "../lib/constants";
-import { absDayToDate, currentTimeScrollTop, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel } from "../lib/date";
+import { absDayToDate, absDayToDateInput, currentTimeScrollTop, dateInputToAbsDay, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel, slotToTimeInput, timeInputToSlot } from "../lib/date";
+import { getMultiDayEndSlot, isMultiDayTask, layoutMultiDayBars } from "../lib/multi-day";
 import { createAvatarPreview } from "../lib/avatar";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
@@ -21,6 +22,8 @@ function taskSignature(tasks: Task[]): string {
       title: task.title,
       description: task.description,
       absDay: task.absDay,
+      endAbsDay: task.endAbsDay,
+      endSlotIndex: task.endSlotIndex,
       slotIndex: task.slotIndex,
       span: task.span,
       color: task.color,
@@ -338,6 +341,9 @@ export default function SchedulePage() {
     : dateToAbsDay(weekDates[0]);
   const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
+  const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
+  const multiDayLaneCount = multiDayBars.reduce((count, bar) => Math.max(count, bar.lane + 1), 0);
+  const multiDayLaneHeight = multiDayLaneCount > 0 ? multiDayLaneCount * 36 + 8 : 0;
 
   // Refs so gesture handlers always read current view values
   const colCountRef        = useRef(DAYS);
@@ -496,7 +502,7 @@ export default function SchedulePage() {
     if (!el) return null;
     const r    = el.getBoundingClientRect();
     const relX = cx - r.left + el.scrollLeft - TIME_W;
-    const relY = cy - r.top  + el.scrollTop  - HEADER_H;
+    const relY = cy - r.top  + el.scrollTop  - HEADER_H - multiDayLaneHeight;
     const day  = Math.floor(relX / dayWidthRef.current);
     const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
@@ -593,7 +599,7 @@ export default function SchedulePage() {
           const rect = container.getBoundingClientRect();
           gs.current.isResizeDragging = true;
           gs.current.resizeTaskId     = taskId;
-          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + task.slotIndex * effSlotHRef.current;
+          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + multiDayLaneHeight + task.slotIndex * effSlotHRef.current;
           gs.current.resizeMaxSpan    = SLOTS - task.slotIndex;
           resizeSpanRef.current       = task.span;
           return;
@@ -662,12 +668,12 @@ export default function SchedulePage() {
         ));
         // Slot that was under the pinch center when the gesture started
         const anchorSlot = (gs.current.pinchScrollTop0 + gs.current.pinchScreenY0
-          - gs.current.pinchRectTop - HEADER_H) / (SLOT_H * gs.current.pinchZoom0);
+          - gs.current.pinchRectTop - HEADER_H - multiDayLaneHeight) / (SLOT_H * gs.current.pinchZoom0);
         // Current midpoint (allows simultaneous pan while pinching)
         const midY = (t1.clientY + t2.clientY) / 2;
         // Desired scrollTop that keeps anchorSlot at the current midpoint
         desiredScrollTopRef.current = Math.max(0,
-          gs.current.pinchRectTop + HEADER_H + anchorSlot * SLOT_H * newZoom - midY
+          gs.current.pinchRectTop + HEADER_H + multiDayLaneHeight + anchorSlot * SLOT_H * newZoom - midY
         );
         fn.current.setZoomLevel(newZoom);
         return;
@@ -791,7 +797,14 @@ export default function SchedulePage() {
         if (dest) {
           fn.current.setTasks(prev => prev.map(task =>
             task.id === taskId
-              ? withTaskAudit({ ...task, absDay: viewStartAbsDayRef.current + dest.dayIndex, slotIndex: dest.slotIndex }, sessionUserRef.current)
+              ? withTaskAudit({
+                  ...task,
+                  absDay: viewStartAbsDayRef.current + dest.dayIndex,
+                  endAbsDay: isMultiDayTask(task)
+                    ? viewStartAbsDayRef.current + dest.dayIndex + ((task.endAbsDay ?? task.absDay) - task.absDay)
+                    : undefined,
+                  slotIndex: dest.slotIndex,
+                }, sessionUserRef.current)
               : task
           ));
           const destDate = absDayToDate(viewStartAbsDayRef.current + dest.dayIndex);
@@ -1231,6 +1244,35 @@ export default function SchedulePage() {
             })}
           </div>
 
+          {multiDayLaneHeight > 0 && (
+            <div className={`flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight }}>
+              <div className={`${th.stickyBg} shrink-0 border-r ${th.border}`} style={{ width: TIME_W }} />
+              <div className="relative" style={{ width: colCount * dayWidth }}>
+                {Array.from({ length: colCount }, (_, day) => (
+                  <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
+                ))}
+                {multiDayBars.map(({ task, lane, left, width }) => {
+                  const isDone = !isCompanySchedule && task.status === "DONE";
+                  const backgroundColor = isHexColor(task.color) ? task.color : undefined;
+                  const backgroundClass = isDone ? doneTaskBgClass(isDark) : resolveTaskBgClass(task.color, isDark);
+                  return (
+                    <button
+                      key={task.id}
+                      type="button"
+                      data-task-id={task.id}
+                      onClick={() => setReviewTaskId(task.id)}
+                      className={`absolute z-10 flex items-center rounded-lg px-2 text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
+                      style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
+                      title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
+                    >
+                      <span className="truncate">{task.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* ── Body row: time column sticky left + grid ─────────────────── */}
           <div className="flex">
 
@@ -1291,6 +1333,7 @@ export default function SchedulePage() {
 
               {/* Task blocks */}
               {tasks.map((task) => {
+                if (isMultiDayTask(task)) return null;
                 const colIdx = task.absDay - viewStartAbsDay;
                 if (colIdx < 0 || colIdx >= colCount) return null; // outside current view
                 const isDraggingThis = draggingId    === task.id;
@@ -1835,6 +1878,9 @@ export default function SchedulePage() {
         const task = tasks.find(t => t.id === reviewTaskId);
         if (!task) return null;
         const taskDate = absDayToDate(task.absDay);
+        const isMultiDay = isMultiDayTask(task);
+        const taskEndAbsDay = task.endAbsDay ?? task.absDay;
+        const taskEndDate = absDayToDate(taskEndAbsDay);
         const durationMinutes = task.span * 30;
         const creatorName = task.createdByName ?? task.assignedFromName ?? "Không rõ";
         const updatedByName = task.updatedByName ?? "Chưa có";
@@ -1922,10 +1968,57 @@ export default function SchedulePage() {
               </div>
 
               <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className={`text-[11px] ${th.subtext}`}>Ngày</p>
-                <p className="mt-0.5 text-sm">
-                  {dayShortOf(taskDate)}, {taskDate.toLocaleDateString("vi-VN")}
-                </p>
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <span>
+                    <span className={`block text-[11px] ${th.subtext}`}>Thời lượng</span>
+                    <span className="block text-sm">Task nhiều ngày</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={isMultiDay}
+                    onChange={(event) => patchTask(task.id, event.target.checked
+                      ? { endAbsDay: task.absDay + 1, endSlotIndex: Math.min(SLOTS - 1, task.slotIndex + task.span) }
+                      : { endAbsDay: undefined, endSlotIndex: undefined })}
+                    className="h-4 w-4 accent-violet-500"
+                  />
+                </label>
+                {isMultiDay ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label>
+                      <span className={`block text-[11px] ${th.subtext}`}>Bắt đầu</span>
+                      <span className="mt-0.5 block text-sm">{dayShortOf(taskDate)}, {slotLabel(task.slotIndex)}</span>
+                    </label>
+                    <label>
+                      <span className={`block text-[11px] ${th.subtext}`}>Kết thúc</span>
+                      <input
+                        type="date"
+                        min={absDayToDateInput(task.absDay)}
+                        value={absDayToDateInput(taskEndAbsDay)}
+                        onChange={(event) => {
+                          const nextEnd = dateInputToAbsDay(event.target.value);
+                          if (nextEnd !== null) patchTask(task.id, { endAbsDay: Math.max(task.absDay + 1, nextEnd) });
+                        }}
+                        className="mt-0.5 w-full rounded bg-transparent text-sm outline-none"
+                      />
+                      <input
+                        type="time"
+                        step="1800"
+                        value={slotToTimeInput(getMultiDayEndSlot(task))}
+                        onChange={(event) => {
+                          const nextSlot = timeInputToSlot(event.target.value);
+                          if (nextSlot !== null) patchTask(task.id, { endSlotIndex: nextSlot });
+                        }}
+                        className="mt-1 w-full rounded bg-transparent text-sm outline-none"
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <>
+                    <p className={`mt-3 text-[11px] ${th.subtext}`}>Ngày</p>
+                    <p className="mt-0.5 text-sm">{dayShortOf(taskDate)}, {taskDate.toLocaleDateString("vi-VN")}</p>
+                  </>
+                )}
+                {isMultiDay && <p className={`mt-2 text-xs ${th.subtext}`}>Kết thúc {dayShortOf(taskEndDate)}, {taskEndDate.toLocaleDateString("vi-VN")} lúc {slotLabel(getMultiDayEndSlot(task))}.</p>}
               </div>
 
               <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>

@@ -1,6 +1,7 @@
 "use client";
 
-import { dayShortOf, slotLabel } from "../lib/date";
+import { absDayToDate, dayShortOf, slotLabel } from "../lib/date";
+import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
 import type { ScheduleTheme, Task } from "../lib/types";
 
 interface TodayTaskListProps {
@@ -15,7 +16,7 @@ interface TodayTaskListProps {
 
 export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, onComplete, onEdit, onRemove }: TodayTaskListProps) {
   const todayTasks = tasks
-    .filter((task) => task.absDay === todayAbsDay)
+    .filter((task) => task.absDay <= todayAbsDay && (task.endAbsDay ?? task.absDay) >= todayAbsDay)
     .sort((first, second) => first.slotIndex - second.slotIndex);
   const completedCount = todayTasks.filter((task) => task.status === "DONE").length;
   const today = new Date();
@@ -47,7 +48,10 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
           <div className="mt-5 grid gap-3">
             {todayTasks.map((task, index) => {
               const isDone = task.status === "DONE";
-              const time = `${slotLabel(task.slotIndex)} – ${slotLabel(task.slotIndex + task.span)}`;
+              const isMultiDay = isMultiDayTask(task);
+              const time = isMultiDay
+                ? `${absDayToDate(task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(task.slotIndex)} → ${absDayToDate(task.endAbsDay ?? task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(getMultiDayEndSlot(task))}`
+                : `${slotLabel(task.slotIndex)} – ${slotLabel(task.slotIndex + task.span)}`;
               return (
                 <article key={task.id} className={`schedule-list-card group rounded-2xl border ${theme.border} ${theme.hdrBg} p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
                   <div className="flex items-start gap-3">
@@ -60,7 +64,7 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
                       {task.description && <p className={`mt-1 line-clamp-2 text-sm ${theme.subtext}`}>{task.description}</p>}
                       <div className={`mt-3 flex items-center gap-2 text-xs font-medium ${theme.subtext}`}>
                         <span className="rounded-lg bg-black/5 px-2 py-1 tabular-nums dark:bg-white/5">◷ {time}</span>
-                        <span>{task.span * 30} phút</span>
+                        <span>{isMultiDay ? "Nhiều ngày" : `${task.span * 30} phút`}</span>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">

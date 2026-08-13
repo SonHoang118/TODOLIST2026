@@ -3,6 +3,10 @@ export interface Task {
   title: string;
   description: string;
   absDay: number;
+  /** Inclusive final day; absent means the task is contained in one day. */
+  endAbsDay?: number;
+  /** End time of a multi-day task, stored as a 30-minute slot. */
+  endSlotIndex?: number;
   slotIndex: number;
   span: number;
   color: string;
