@@ -1256,18 +1256,20 @@ export default function SchedulePage() {
           </div>
 
           {multiDayLaneHeight > 0 && (
-            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
-              <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center border-r ${th.border} pt-1`} style={{ width: TIME_W }}>
+            <div className={`sticky top-[52px] z-20 flex ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
+              <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center pt-1`} style={{ width: TIME_W }}>
                 {hasOverlappingMultiDayTasks && (
                   <button
                     type="button"
                     data-multi-day-toggle
                     onClick={() => setIsMultiDayLaneExpanded((expanded) => !expanded)}
-                    className={`flex h-8 w-10 items-center justify-center rounded-md border text-sm font-bold ${th.btnSecondary}`}
+                    className={`flex h-8 w-10 items-center justify-center text-zinc-400 transition-colors hover:text-violet-400`}
                     aria-label={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : "Hiển thị toàn bộ task nhiều ngày"}
                     title={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : `Hiển thị ${multiDayBars.length} task nhiều ngày`}
                   >
-                    {isMultiDayLaneExpanded ? "▴" : "▾"}
+                    <svg className={`h-5 w-5 transition-transform duration-300 ${isMultiDayLaneExpanded ? "rotate-180" : "rotate-0"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
                   </button>
                 )}
               </div>
@@ -1281,10 +1283,9 @@ export default function SchedulePage() {
                       type="button"
                       data-multi-day-toggle
                       onClick={() => setIsMultiDayLaneExpanded(true)}
-                      className={`pointer-events-auto flex h-8 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold shadow-sm ${th.btnSecondary}`}
+                      className="pointer-events-auto text-center text-[11px] font-semibold text-zinc-400 transition-colors hover:text-violet-400"
                     >
-                      <span>{multiDayBars.length} task diễn ra nhiều ngày</span>
-                      <span className="text-violet-400">Hiển thị ▾</span>
+                      {multiDayBars.length} task diễn ra nhiều ngày
                     </button>
                   </div>
                 ) : multiDayBars.map(({ task, lane, left, width }) => {
