@@ -1323,19 +1323,26 @@ export default function SchedulePage() {
                 {Array.from({ length: colCount }, (_, day) => (
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
                 ))}
-                {nearestMultiDayTaskBeforeView && (
+                {hasMultiDayEdgeIndicators && horizontalViewport.width > TIME_W && (
                   <div
-                    className={`pointer-events-none absolute z-20 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
-                    style={{ left: viewportStartPx, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
-                    title={`Task gần nhất phía trước: ${nearestMultiDayTaskBeforeView.title}`}
-                  />
-                )}
-                {nearestMultiDayTaskAfterView && (
-                  <div
-                    className={`pointer-events-none absolute z-20 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
-                    style={{ left: viewportEndPx - 4, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
-                    title={`Task gần nhất phía sau: ${nearestMultiDayTaskAfterView.title}`}
-                  />
+                    className="pointer-events-none sticky z-20 h-0"
+                    style={{ left: TIME_W, width: horizontalViewport.width - TIME_W }}
+                  >
+                    {nearestMultiDayTaskBeforeView && (
+                      <div
+                        className={`absolute left-0 top-[5px] h-[27px] w-1 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
+                        style={{ backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
+                        title={`Task gần nhất phía trước: ${nearestMultiDayTaskBeforeView.title}`}
+                      />
+                    )}
+                    {nearestMultiDayTaskAfterView && (
+                      <div
+                        className={`absolute right-0 top-[5px] h-[27px] w-1 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
+                        style={{ backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
+                        title={`Task gần nhất phía sau: ${nearestMultiDayTaskAfterView.title}`}
+                      />
+                    )}
+                  </div>
                 )}
                 {hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? (
                   <div className="sticky left-0 z-30 flex h-full w-[calc(100vw-44px)] items-center justify-center pointer-events-none">
