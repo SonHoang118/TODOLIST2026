@@ -3,10 +3,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   COLORS, DAY_W, DAY_W_MAX, DAY_W_MIN, DAY_W_STEP, DAYS, DEFAULT_TASK_BG,
-  DEFAULT_TASK_LABEL, DRAG_DELTA, HANDLE_H, INF_BUFFER, INF_CENTER,
+  DEFAULT_TASK_LABEL, DRAG_DELTA, HANDLE_H, HEADER_H, INF_BUFFER, INF_CENTER,
   LEGACY_DEFAULT_TASK_BG, LONG_PRESS_MS, PERSONAL_TASK_BG, PERSONAL_TASK_LABEL,
   SLOT_H, SLOT_MS, SLOTS, STATUS_LABEL, TAILWIND_COLOR_TO_HEX, TASK_LABEL_TEXT,
-  TASK_TITLE_POOL, TIME_W, WEEKDAY_HEADER_H,
+  TASK_TITLE_POOL, TIME_W,
 } from "../lib/constants";
 import { absDayToDate, currentTimeScrollTop, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel } from "../lib/date";
 import { createAvatarPreview } from "../lib/avatar";
@@ -496,7 +496,7 @@ export default function SchedulePage() {
     if (!el) return null;
     const r    = el.getBoundingClientRect();
     const relX = cx - r.left + el.scrollLeft - TIME_W;
-    const relY = cy - r.top  + el.scrollTop  - WEEKDAY_HEADER_H;
+    const relY = cy - r.top  + el.scrollTop  - HEADER_H;
     const day  = Math.floor(relX / dayWidthRef.current);
     const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
@@ -593,7 +593,7 @@ export default function SchedulePage() {
           const rect = container.getBoundingClientRect();
           gs.current.isResizeDragging = true;
           gs.current.resizeTaskId     = taskId;
-          gs.current.resizeTopClientY = rect.top - container.scrollTop + WEEKDAY_HEADER_H + task.slotIndex * effSlotHRef.current;
+          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + task.slotIndex * effSlotHRef.current;
           gs.current.resizeMaxSpan    = SLOTS - task.slotIndex;
           resizeSpanRef.current       = task.span;
           return;
@@ -662,12 +662,12 @@ export default function SchedulePage() {
         ));
         // Slot that was under the pinch center when the gesture started
         const anchorSlot = (gs.current.pinchScrollTop0 + gs.current.pinchScreenY0
-          - gs.current.pinchRectTop - WEEKDAY_HEADER_H) / (SLOT_H * gs.current.pinchZoom0);
+          - gs.current.pinchRectTop - HEADER_H) / (SLOT_H * gs.current.pinchZoom0);
         // Current midpoint (allows simultaneous pan while pinching)
         const midY = (t1.clientY + t2.clientY) / 2;
         // Desired scrollTop that keeps anchorSlot at the current midpoint
         desiredScrollTopRef.current = Math.max(0,
-          gs.current.pinchRectTop + WEEKDAY_HEADER_H + anchorSlot * SLOT_H * newZoom - midY
+          gs.current.pinchRectTop + HEADER_H + anchorSlot * SLOT_H * newZoom - midY
         );
         fn.current.setZoomLevel(newZoom);
         return;
@@ -1203,12 +1203,12 @@ export default function SchedulePage() {
 
           {/* ── Header row: sticky top, corner also sticky left ──────────── */}
           <div
-            className={`flex z-20 ${isDark ? "bg-blue-950/95" : "bg-blue-50/95"} border-b ${th.border}`}
-            style={{ position: "sticky", top: 0, height: WEEKDAY_HEADER_H }}
+            className={`flex z-20 ${th.stickyHdr} border-b ${th.border}`}
+            style={{ position: "sticky", top: 0, height: HEADER_H }}
           >
             {/* Top-left corner: sticky in both axes */}
             <div
-              className={`${isDark ? "bg-blue-950/95" : "bg-blue-50/95"} shrink-0 z-30`}
+              className={`${th.stickyHdr} shrink-0 z-30`}
               style={{ position: "sticky", left: 0, width: TIME_W }}
             />
             {/* Day headers: rendered from colDates (7 in week mode, INF_BUFFER in infinite mode) */}
