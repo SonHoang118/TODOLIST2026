@@ -11,6 +11,7 @@ import {
 import { absDayToDate, currentTimeScrollTop, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel } from "../lib/date";
 import { createAvatarPreview } from "../lib/avatar";
 import { TaskAvatar } from "./TaskAvatar";
+import { TodayTaskList } from "./TodayTaskList";
 import type { ScheduleScope, SessionUser, Task, TaskLabelValue, TaskStatus } from "../lib/types";
 
 function taskSignature(tasks: Task[]): string {
@@ -212,6 +213,7 @@ function slotGradientTextColor(slot: number, isDark: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
+  const [viewMode, setViewMode] = useState<"SCHEDULE" | "TASK_LIST">("SCHEDULE");
   const [tasks, setTasks]                 = useState<Task[]>([]);
   const [weekOffset, setWeekOffset]       = useState(0);
   const [draggingId, setDraggingId]       = useState<number | null>(null);
@@ -862,6 +864,7 @@ export default function SchedulePage() {
               updatedByAvatar: actorUser?.avatar ?? null,
               confirmedByUserIds: actorUser ? [actorUser.id] : [],
             }]);
+            triggerTaskEntranceAnimation();
             fn.current.setResizingId(id);
             fn.current.setBadge("Kéo thanh để điều chỉnh thời lượng");
           }
@@ -1082,14 +1085,23 @@ export default function SchedulePage() {
 
       {/* ── App header ───────────────────────────────────────────────────── */}
       <header className={`relative flex items-center gap-1 px-3 py-2 pr-12 ${th.hdrBg} border-b ${th.border} shrink-0`}>
-        {infiniteScroll ? (
-          <div className="w-8 h-8 shrink-0" />
+        <button
+          type="button"
+          onClick={() => setViewMode((mode) => mode === "SCHEDULE" ? "TASK_LIST" : "SCHEDULE")}
+          className={`z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${viewMode === "TASK_LIST" ? "bg-violet-600 text-white" : th.btnSecondary}`}
+          aria-label={viewMode === "SCHEDULE" ? "Chuyển sang danh sách công việc" : "Chuyển sang lịch"}
+          title={viewMode === "SCHEDULE" ? "Danh sách công việc" : "Xem lịch"}
+        >
+          {viewMode === "SCHEDULE" ? "☷" : "▦"}
+        </button>
+        {viewMode === "SCHEDULE" && (infiniteScroll ? (
+          <div className="hidden w-8 h-8 shrink-0 sm:block" />
         ) : (
           <button
             onClick={() => setWeekOffset(w => w - 1)}
             className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 text-lg"
           >‹</button>
-        )}
+        ))}
 
         <div className="flex-1 text-center min-w-0">
           <p className={`text-xs font-semibold text-zinc-300 truncate transition-transform duration-300 ${isBadgeVisible ? "-translate-y-0.5" : "translate-y-0"}`}>
@@ -1109,7 +1121,7 @@ export default function SchedulePage() {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {infiniteScroll ? (
+          {viewMode === "SCHEDULE" && (infiniteScroll ? (
             <button
               onClick={handleResetInfiniteView}
               className="text-[10px] text-violet-400 px-2 py-1 rounded-lg bg-violet-900/40 shrink-0"
@@ -1132,7 +1144,7 @@ export default function SchedulePage() {
                 </button>
               )}
             </>
-          )}
+          ))}
 
         </div>
 
@@ -1148,7 +1160,17 @@ export default function SchedulePage() {
         </button>
       </header>
 
-      {/* ── Main scrollable area ─────────────────────────────────────────── */}
+      {viewMode === "TASK_LIST" ? (
+        <TodayTaskList
+          tasks={tasks}
+          todayAbsDay={todayAbsDay}
+          isCompanySchedule={isCompanySchedule}
+          theme={th}
+          onComplete={(taskId) => applyTaskAction("complete", taskId)}
+          onEdit={(taskId) => applyTaskAction("edit", taskId)}
+          onRemove={(taskId) => applyTaskAction("remove", taskId)}
+        />
+      ) : (
       <div className="relative flex-1 overflow-hidden">
         <div
           ref={scrollRef}
@@ -1576,6 +1598,7 @@ export default function SchedulePage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── Drag ghost ───────────────────────────────────────────────────── */}
       {draggingTask && (
