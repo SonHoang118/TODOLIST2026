@@ -506,7 +506,7 @@ export default function SchedulePage() {
     if (!el) return null;
     const r    = el.getBoundingClientRect();
     const relX = cx - r.left + el.scrollLeft - TIME_W;
-    const relY = cy - r.top  + el.scrollTop  - HEADER_H - multiDayLaneHeight;
+    const relY = cy - r.top  + el.scrollTop  - HEADER_H;
     const day  = Math.floor(relX / dayWidthRef.current);
     const slot = Math.floor(relY / effSlotHRef.current);
     if (day < 0 || day >= colCountRef.current || slot < 0 || slot >= SLOTS) return null;
@@ -541,6 +541,13 @@ export default function SchedulePage() {
 
       const t  = e.touches[0];
       const el = document.elementFromPoint(t.clientX, t.clientY);
+
+      if (el?.closest("[data-multi-day-toggle]")) {
+        e.preventDefault();
+        setIsMultiDayLaneExpanded((expanded) => !expanded);
+        clearTimer();
+        return;
+      }
 
       // ── Pinch to zoom (2 fingers) ──────────────────────────────────────────
       if (e.touches.length === 2) {
@@ -603,7 +610,7 @@ export default function SchedulePage() {
           const rect = container.getBoundingClientRect();
           gs.current.isResizeDragging = true;
           gs.current.resizeTaskId     = taskId;
-          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + multiDayLaneHeight + task.slotIndex * effSlotHRef.current;
+          gs.current.resizeTopClientY = rect.top - container.scrollTop + HEADER_H + task.slotIndex * effSlotHRef.current;
           gs.current.resizeMaxSpan    = SLOTS - task.slotIndex;
           resizeSpanRef.current       = task.span;
           return;
@@ -672,12 +679,12 @@ export default function SchedulePage() {
         ));
         // Slot that was under the pinch center when the gesture started
         const anchorSlot = (gs.current.pinchScrollTop0 + gs.current.pinchScreenY0
-          - gs.current.pinchRectTop - HEADER_H - multiDayLaneHeight) / (SLOT_H * gs.current.pinchZoom0);
+          - gs.current.pinchRectTop - HEADER_H) / (SLOT_H * gs.current.pinchZoom0);
         // Current midpoint (allows simultaneous pan while pinching)
         const midY = (t1.clientY + t2.clientY) / 2;
         // Desired scrollTop that keeps anchorSlot at the current midpoint
         desiredScrollTopRef.current = Math.max(0,
-          gs.current.pinchRectTop + HEADER_H + multiDayLaneHeight + anchorSlot * SLOT_H * newZoom - midY
+          gs.current.pinchRectTop + HEADER_H + anchorSlot * SLOT_H * newZoom - midY
         );
         fn.current.setZoomLevel(newZoom);
         return;
@@ -1249,13 +1256,14 @@ export default function SchedulePage() {
           </div>
 
           {multiDayLaneHeight > 0 && (
-            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight }}>
+            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight, marginBottom: -multiDayLaneHeight }}>
               <div className={`${th.stickyBg} sticky left-0 z-30 flex shrink-0 items-start justify-center border-r ${th.border} pt-1`} style={{ width: TIME_W }}>
                 {hasOverlappingMultiDayTasks && (
                   <button
                     type="button"
+                    data-multi-day-toggle
                     onClick={() => setIsMultiDayLaneExpanded((expanded) => !expanded)}
-                    className={`flex h-7 w-8 items-center justify-center rounded-md border text-xs font-bold ${th.btnSecondary}`}
+                    className={`flex h-8 w-10 items-center justify-center rounded-md border text-sm font-bold ${th.btnSecondary}`}
                     aria-label={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : "Hiển thị toàn bộ task nhiều ngày"}
                     title={isMultiDayLaneExpanded ? "Thu gọn task nhiều ngày" : `Hiển thị ${multiDayBars.length} task nhiều ngày`}
                   >
@@ -1268,14 +1276,17 @@ export default function SchedulePage() {
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
                 ))}
                 {hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsMultiDayLaneExpanded(true)}
-                    className={`absolute inset-x-1 top-1 z-20 flex h-7 items-center justify-between rounded-lg border px-2 text-left text-[10px] font-semibold ${th.btnSecondary}`}
-                  >
-                    <span>{multiDayBars.length} task diễn ra nhiều ngày</span>
-                    <span className="text-violet-400">Hiển thị ▾</span>
-                  </button>
+                  <div className="sticky left-0 z-30 flex h-full w-[calc(100vw-44px)] items-center justify-center pointer-events-none">
+                    <button
+                      type="button"
+                      data-multi-day-toggle
+                      onClick={() => setIsMultiDayLaneExpanded(true)}
+                      className={`pointer-events-auto flex h-8 items-center gap-2 rounded-lg border px-3 text-[11px] font-semibold shadow-sm ${th.btnSecondary}`}
+                    >
+                      <span>{multiDayBars.length} task diễn ra nhiều ngày</span>
+                      <span className="text-violet-400">Hiển thị ▾</span>
+                    </button>
+                  </div>
                 ) : multiDayBars.map(({ task, lane, left, width }) => {
                   const isDone = !isCompanySchedule && task.status === "DONE";
                   const backgroundColor = isHexColor(task.color) ? task.color : undefined;
