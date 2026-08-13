@@ -1283,8 +1283,8 @@ export default function SchedulePage() {
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
                     >
                       <div
-                        className={`sticky z-10 inline-flex h-full w-max max-w-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
-                        style={{ left: TIME_W, backgroundColor }}
+                        className="sticky z-10 inline-flex h-full w-max max-w-full min-w-0 items-center px-1"
+                        style={{ left: TIME_W }}
                       >
                         {canToggleDone && (
                           <button
@@ -1295,7 +1295,7 @@ export default function SchedulePage() {
                               event.stopPropagation();
                               applyTaskAction("complete", task.id);
                             }}
-                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                            className="mr-1 flex h-4 w-4 shrink-0 items-center justify-center"
                             title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                             aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                           >
