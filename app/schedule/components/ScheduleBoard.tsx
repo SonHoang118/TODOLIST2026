@@ -1340,7 +1340,7 @@ export default function SchedulePage() {
                 {Array.from({ length: colCount }, (_, day) => (
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
                 ))}
-                {hasMultiDayEdgeIndicators && horizontalViewport.width > TIME_W && (
+                {isMultiDayLaneExpanded && hasMultiDayEdgeIndicators && horizontalViewport.width > TIME_W && (
                   <div
                     className="pointer-events-none sticky z-20 h-0"
                     style={{ left: TIME_W, width: horizontalViewport.width - TIME_W }}
@@ -1356,7 +1356,7 @@ export default function SchedulePage() {
                     {multiDayTasksAfterIndicator.map((task) => (
                       <div
                         key={task.id}
-                        className={`absolute right-0 h-[27px] w-1 rounded-l ${isHexColor(task.color) ? "" : resolveTaskBgClass(task.color, isDark)}`}
+                        className={`absolute right-1 h-[27px] w-1 rounded-l ${isHexColor(task.color) ? "" : resolveTaskBgClass(task.color, isDark)}`}
                         style={{ top: (multiDayTaskLanes.get(task.id) ?? 0) * 36 + 5, backgroundColor: isHexColor(task.color) ? task.color : undefined }}
                         title={`Task phía sau: ${task.title}`}
                       />
