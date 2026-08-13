@@ -1091,7 +1091,7 @@ export default function SchedulePage() {
     setResizingId(null);
   };
 
-  const handleNotificationTaskClick = (notification: AppNotification) => {
+  const handleNotificationTaskClick = async (notification: AppNotification) => {
     void markRead(notification.id);
     if (notification.taskId === null) return;
     const legacyOwner = notification.kind === "ASSIGNED"
@@ -1100,6 +1100,25 @@ export default function SchedulePage() {
     const targetScope = notification.taskScope ?? (notification.kind === "COMPANY_CREATED" || notification.kind === "COMPANY_CONFIRMED" ? "COMPANY" : "USER");
     const targetOwnerId = notification.taskOwnerUserId ?? legacyOwner;
     if (targetScope === "USER" && targetOwnerId === null) return;
+
+    try {
+      const params = new URLSearchParams({
+        scope: targetScope,
+        ...(targetScope === "USER" ? { ownerId: String(targetOwnerId) } : {}),
+      });
+      const response = await fetch(`/api/schedule/tasks?${params}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const targetTasks = await response.json() as Task[];
+      if (!targetTasks.some((task) => task.id === notification.taskId)) {
+        setNotificationsOpen(false);
+        setBadge("Task không còn tồn tại");
+        return;
+      }
+    } catch {
+      // Keep the sidebar open when the latest task state cannot be checked.
+      return;
+    }
+
     const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
     setIsNotificationNavigating(true);
     setHasObservedNotificationLoad(false);
@@ -1125,6 +1144,7 @@ export default function SchedulePage() {
       if (!task) {
         setNotificationTaskToFocus(null);
         setIsNotificationNavigating(false);
+        setBadge("Task không còn tồn tại");
       }
       return;
     }
