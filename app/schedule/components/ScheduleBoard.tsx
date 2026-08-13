@@ -1057,7 +1057,10 @@ export default function SchedulePage() {
     ? { backgroundColor: draggingTask.color }
     : undefined;
   const isViewingOwnSchedule = !isCompanySchedule && sessionUser !== null && authUserId === sessionUser.id;
-  const isUiLocked = isScheduleLoading || isScheduleSaving || authBusy || isInteractionLocked;
+  // Saving is deliberately non-blocking: the overlay remains informative, but must not
+  // swallow clicks such as a follow-up delete after a drag or resize.
+  const isUiLocked = isScheduleLoading || authBusy || isInteractionLocked;
+  const isSyncIndicatorVisible = isUiLocked || isScheduleSaving;
   const gridStrongBorderClass = isCompanySchedule ? "border-rose-500/30" : th.border;
   const gridHalfBorderClass = isCompanySchedule ? "border-rose-500/15" : th.halfBorder;
   const gridDayBorderClass = isCompanySchedule ? "border-rose-500/25" : th.dayBorder;
@@ -1276,33 +1279,39 @@ export default function SchedulePage() {
                     <div
                       key={task.id}
                       data-task-id={task.id}
-                      className={`absolute z-10 flex items-center rounded-lg px-1 text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
+                      className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
                     >
-                      {canToggleDone && (
+                      {/* Stays visible during horizontal scroll, but its task bar bounds the sticky area. */}
+                      <div
+                        className={`sticky left-0 z-10 flex h-full w-full min-w-0 items-center rounded-l-lg px-1 ${backgroundClass}`}
+                        style={{ backgroundColor }}
+                      >
+                        {canToggleDone && (
+                          <button
+                            type="button"
+                            data-action="complete"
+                            data-task-id={task.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              applyTaskAction("complete", task.id);
+                            }}
+                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                            title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                            aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                          >
+                            {isDone && <span className="text-[10px] leading-none text-emerald-200">✓</span>}
+                          </button>
+                        )}
                         <button
                           type="button"
-                          data-action="complete"
-                          data-task-id={task.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            applyTaskAction("complete", task.id);
-                          }}
-                          className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
-                          title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
-                          aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
+                          onClick={() => setReviewTaskId(task.id)}
+                          className="min-w-0 flex-1 text-left"
+                          title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
                         >
-                          {isDone && <span className="text-[10px] leading-none text-emerald-200">✓</span>}
+                          <span className={`block truncate ${isDone ? "line-through" : ""}`}>{task.title}</span>
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setReviewTaskId(task.id)}
-                        className="min-w-0 flex-1 text-left"
-                        title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
-                      >
-                        <span className={`block truncate ${isDone ? "line-through" : ""}`}>{task.title}</span>
-                      </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1657,8 +1666,8 @@ export default function SchedulePage() {
         </div>{/* end scrollRef */}
 
         <div
-          className={`absolute inset-0 z-40 transition-opacity duration-300 ${isUiLocked ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-          aria-hidden={!isUiLocked}
+          className={`absolute inset-0 z-40 transition-opacity duration-300 ${isSyncIndicatorVisible ? "opacity-100" : "opacity-0 pointer-events-none"} ${isUiLocked ? "pointer-events-auto" : "pointer-events-none"}`}
+          aria-hidden={!isSyncIndicatorVisible}
         >
           <div className={`absolute inset-0 ${isScheduleLoading || isScheduleSaving || authBusy ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
           <div className="absolute -left-10 top-[22%] h-36 w-36 rounded-full bg-violet-500/25 blur-3xl animate-pulse" />
