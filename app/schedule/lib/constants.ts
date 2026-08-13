@@ -4,6 +4,9 @@ export const SLOT_H = 32;
 export const DAY_W = 100;
 export const TIME_W = 44;
 export const HEADER_H = 52;
+// Temporary weekday-header preview. Reset this to 0 to restore the original height.
+export const TEMP_WEEKDAY_HEADER_EXTRA_HEIGHT = 30;
+export const WEEKDAY_HEADER_H = HEADER_H + TEMP_WEEKDAY_HEADER_EXTRA_HEIGHT;
 export const SLOTS = 48;
 export const DAYS = 7;
 export const LONG_PRESS_MS = 350;
