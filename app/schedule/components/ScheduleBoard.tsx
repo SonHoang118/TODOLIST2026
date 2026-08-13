@@ -455,12 +455,12 @@ export default function SchedulePage() {
       const task = tasksRef.current.find((t) => t.id === taskId);
       const taskName = task?.title?.trim() || `#${taskId}`;
       const shouldDelete = window.confirm(`Bạn có chắc muốn xóa task \"${taskName}\" không?`);
-      if (!shouldDelete) return;
+      if (!shouldDelete) return false;
 
       fn.current.setTasks(prev => prev.filter(t => t.id !== taskId));
       fn.current.setResizingId(null);
       fn.current.setBadge("Đã xoá");
-      return;
+      return true;
     }
 
     if (action === "edit") {
@@ -1956,7 +1956,18 @@ export default function SchedulePage() {
               className={`${th.modalBg} rounded-2xl p-5 shadow-2xl mx-4 w-full max-w-xs border ${th.border}`}
               onClick={e => e.stopPropagation()}
             >
-              <h3 className="text-base font-semibold">Chi tiết công việc</h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-semibold">Chi tiết công việc</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (applyTaskAction("remove", task.id)) setReviewTaskId(null);
+                  }}
+                  className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+                >
+                  Xóa
+                </button>
+              </div>
               <div className={`mt-3 rounded-xl ${th.inputBg} px-3 py-2`}>
                 <p className={`text-[11px] ${th.subtext}`}>Tên công việc</p>
                 <input
@@ -2046,7 +2057,30 @@ export default function SchedulePage() {
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <label>
                       <span className={`block text-[11px] ${th.subtext}`}>Bắt đầu</span>
-                      <span className="mt-0.5 block text-sm">{dayShortOf(taskDate)}, {slotLabel(task.slotIndex)}</span>
+                      <input
+                        type="date"
+                        value={absDayToDateInput(task.absDay)}
+                        onChange={(event) => {
+                          const nextStart = dateInputToAbsDay(event.target.value);
+                          if (nextStart !== null) {
+                            patchTask(task.id, {
+                              absDay: nextStart,
+                              endAbsDay: Math.max(nextStart + 1, taskEndAbsDay),
+                            });
+                          }
+                        }}
+                        className="mt-0.5 w-full rounded bg-transparent text-sm outline-none"
+                      />
+                      <input
+                        type="time"
+                        step="1800"
+                        value={slotToTimeInput(task.slotIndex)}
+                        onChange={(event) => {
+                          const nextSlot = timeInputToSlot(event.target.value);
+                          if (nextSlot !== null) patchTask(task.id, { slotIndex: nextSlot });
+                        }}
+                        className="mt-1 w-full rounded bg-transparent text-sm outline-none"
+                      />
                     </label>
                     <label>
                       <span className={`block text-[11px] ${th.subtext}`}>Kết thúc</span>
@@ -2081,13 +2115,15 @@ export default function SchedulePage() {
                 {isMultiDay && <p className={`mt-2 text-xs ${th.subtext}`}>Kết thúc {dayShortOf(taskEndDate)}, {taskEndDate.toLocaleDateString("vi-VN")} lúc {slotLabel(getMultiDayEndSlot(task))}.</p>}
               </div>
 
-              <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
-                <p className={`text-[11px] ${th.subtext}`}>Thời gian</p>
-                <p className="mt-0.5 text-sm tabular-nums">
-                  {slotLabel(task.slotIndex)} - {slotLabel(task.slotIndex + task.span)}
-                </p>
-                <p className={`mt-0.5 text-xs ${th.subtext}`}>{durationMinutes} phút</p>
-              </div>
+              {!isMultiDay && (
+                <div className={`mt-2 rounded-xl ${th.inputBg} px-3 py-2`}>
+                  <p className={`text-[11px] ${th.subtext}`}>Thời gian</p>
+                  <p className="mt-0.5 text-sm tabular-nums">
+                    {slotLabel(task.slotIndex)} - {slotLabel(task.slotIndex + task.span)}
+                  </p>
+                  <p className={`mt-0.5 text-xs ${th.subtext}`}>{durationMinutes} phút</p>
+                </div>
+              )}
 
               {isCompanySchedule && (
                 <>
