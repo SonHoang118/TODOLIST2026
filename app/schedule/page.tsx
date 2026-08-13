@@ -1124,6 +1124,11 @@ export default function SchedulePage() {
 
   useEffect(() => {
     void loadAuthUsers();
+    // Unlock interactions after a short delay to allow initial render
+    const timer = setTimeout(() => {
+      setIsInteractionLocked(false);
+    }, 300);
+    return () => clearTimeout(timer);
   }, []);
 
   const loadAuthUsers = async () => {
