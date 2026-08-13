@@ -9,7 +9,7 @@ import {
   TASK_TITLE_POOL, TIME_W,
 } from "../lib/constants";
 import { absDayToDate, absDayToDateInput, currentTimeScrollTop, dateInputToAbsDay, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel, slotToTimeInput, timeInputToSlot } from "../lib/date";
-import { getMultiDayEndSlot, isMultiDayTask, layoutMultiDayBars } from "../lib/multi-day";
+import { getMultiDayEndSlot, getMultiDayTaskLanes, isMultiDayTask, layoutMultiDayBars } from "../lib/multi-day";
 import { createAvatarPreview } from "../lib/avatar";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
@@ -343,6 +343,7 @@ export default function SchedulePage() {
     : dateToAbsDay(weekDates[0]);
   const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
+  const multiDayTaskLanes = getMultiDayTaskLanes(tasks);
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
   const viewStartSlot = viewStartAbsDay * SLOTS;
   const viewportStartPx = horizontalViewport.width > 0 ? horizontalViewport.left : 0;
@@ -363,8 +364,18 @@ export default function SchedulePage() {
     .sort((first, second) => first.absDay * SLOTS + first.slotIndex - (second.absDay * SLOTS + second.slotIndex));
   const nearestMultiDayTaskBeforeView = multiDayTasksBeforeView[0];
   const nearestMultiDayTaskAfterView = multiDayTasksAfterView[0];
+  const nearestMultiDayTaskBeforeViewLane = nearestMultiDayTaskBeforeView
+    ? (multiDayTaskLanes.get(nearestMultiDayTaskBeforeView.id) ?? 0)
+    : 0;
+  const nearestMultiDayTaskAfterViewLane = nearestMultiDayTaskAfterView
+    ? (multiDayTaskLanes.get(nearestMultiDayTaskAfterView.id) ?? 0)
+    : 0;
   const hasMultiDayEdgeIndicators = Boolean(nearestMultiDayTaskBeforeView || nearestMultiDayTaskAfterView);
-  const multiDayLaneCount = multiDayBars.reduce((count, bar) => Math.max(count, bar.lane + 1), 0);
+  const multiDayLaneCount = Math.max(
+    multiDayBars.reduce((count, bar) => Math.max(count, bar.lane + 1), 0),
+    nearestMultiDayTaskBeforeViewLane + (nearestMultiDayTaskBeforeView ? 1 : 0),
+    nearestMultiDayTaskAfterViewLane + (nearestMultiDayTaskAfterView ? 1 : 0),
+  );
   const hasOverlappingMultiDayTasks = multiDayLaneCount > 1;
   const multiDayLaneHeight = multiDayLaneCount > 0 || hasMultiDayEdgeIndicators
     ? (hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? 36 : Math.max(1, multiDayLaneCount) * 36 + 8)
@@ -1330,15 +1341,15 @@ export default function SchedulePage() {
                   >
                     {nearestMultiDayTaskBeforeView && (
                       <div
-                        className={`absolute left-0 top-[5px] h-[27px] w-1 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
-                        style={{ backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
+                        className={`absolute left-0 h-[27px] w-1 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
+                        style={{ top: nearestMultiDayTaskBeforeViewLane * 36 + 5, backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
                         title={`Task gần nhất phía trước: ${nearestMultiDayTaskBeforeView.title}`}
                       />
                     )}
                     {nearestMultiDayTaskAfterView && (
                       <div
-                        className={`absolute right-0 top-[5px] h-[27px] w-1 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
-                        style={{ backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
+                        className={`absolute right-0 h-[27px] w-1 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
+                        style={{ top: nearestMultiDayTaskAfterViewLane * 36 + 5, backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
                         title={`Task gần nhất phía sau: ${nearestMultiDayTaskAfterView.title}`}
                       />
                     )}
