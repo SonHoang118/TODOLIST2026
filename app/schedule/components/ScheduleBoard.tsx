@@ -240,6 +240,7 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
+  const [isMultiDayLaneExpanded, setIsMultiDayLaneExpanded] = useState(true);
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("USER");
   const [isScheduleLoading] = useState(false);
   const [isInteractionLocked, setIsInteractionLocked] = useState(false);
@@ -343,7 +344,10 @@ export default function SchedulePage() {
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
   const multiDayLaneCount = multiDayBars.reduce((count, bar) => Math.max(count, bar.lane + 1), 0);
-  const multiDayLaneHeight = multiDayLaneCount > 0 ? multiDayLaneCount * 36 + 8 : 0;
+  const hasOverlappingMultiDayTasks = multiDayLaneCount > 1;
+  const multiDayLaneHeight = multiDayLaneCount > 0
+    ? (hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? 36 : multiDayLaneCount * 36 + 8)
+    : 0;
 
   // Refs so gesture handlers always read current view values
   const colCountRef        = useRef(DAYS);
@@ -1245,13 +1249,22 @@ export default function SchedulePage() {
           </div>
 
           {multiDayLaneHeight > 0 && (
-            <div className={`flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight }}>
+            <div className={`sticky top-[52px] z-20 flex border-b ${th.border} ${th.stickyBg}`} style={{ height: multiDayLaneHeight }}>
               <div className={`${th.stickyBg} shrink-0 border-r ${th.border}`} style={{ width: TIME_W }} />
               <div className="relative" style={{ width: colCount * dayWidth }}>
                 {Array.from({ length: colCount }, (_, day) => (
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
                 ))}
-                {multiDayBars.map(({ task, lane, left, width }) => {
+                {hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsMultiDayLaneExpanded(true)}
+                    className={`absolute inset-x-1 top-1 z-20 flex h-7 items-center justify-between rounded-lg border px-2 text-left text-[10px] font-semibold ${th.btnSecondary}`}
+                  >
+                    <span>{multiDayBars.length} task diễn ra nhiều ngày</span>
+                    <span className="text-violet-400">Hiển thị ▾</span>
+                  </button>
+                ) : multiDayBars.map(({ task, lane, left, width }) => {
                   const isDone = !isCompanySchedule && task.status === "DONE";
                   const backgroundColor = isHexColor(task.color) ? task.color : undefined;
                   const backgroundClass = isDone ? doneTaskBgClass(isDark) : resolveTaskBgClass(task.color, isDark);
@@ -1269,6 +1282,16 @@ export default function SchedulePage() {
                     </button>
                   );
                 })}
+                {hasOverlappingMultiDayTasks && isMultiDayLaneExpanded && (
+                  <button
+                    type="button"
+                    onClick={() => setIsMultiDayLaneExpanded(false)}
+                    className={`absolute right-1 top-1 z-20 rounded-md border px-1.5 py-0.5 text-[9px] font-semibold ${th.btnSecondary}`}
+                    title="Thu gọn task nhiều ngày"
+                  >
+                    Thu gọn ▴
+                  </button>
+                )}
               </div>
             </div>
           )}
