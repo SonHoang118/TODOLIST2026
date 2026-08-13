@@ -1091,7 +1091,7 @@ export default function SchedulePage() {
     setResizingId(null);
   };
 
-  const handleNotificationTaskClick = async (notification: AppNotification) => {
+  const handleNotificationTaskClick = (notification: AppNotification) => {
     void markRead(notification.id);
     if (notification.taskId === null) return;
     const legacyOwner = notification.kind === "ASSIGNED"
@@ -1101,27 +1101,10 @@ export default function SchedulePage() {
     const targetOwnerId = notification.taskOwnerUserId ?? legacyOwner;
     if (targetScope === "USER" && targetOwnerId === null) return;
 
-    // Respond to the click immediately while the latest task state is checked.
+    // Start navigating immediately. A server check is only needed if the loaded
+    // schedule cannot find the task.
     setIsNotificationNavigating(true);
     setNotificationsOpen(false);
-
-    try {
-      const params = new URLSearchParams({
-        scope: targetScope,
-        ...(targetScope === "USER" ? { ownerId: String(targetOwnerId) } : {}),
-      });
-      const response = await fetch(`/api/schedule/tasks?${params}`, { cache: "no-store" });
-      if (!response.ok) return;
-      const targetTasks = await response.json() as Task[];
-      if (!targetTasks.some((task) => task.id === notification.taskId)) {
-        setIsNotificationNavigating(false);
-        setBadge("Task không còn tồn tại");
-        return;
-      }
-    } catch {
-      setIsNotificationNavigating(false);
-      return;
-    }
 
     const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
     setHasObservedNotificationLoad(false);
@@ -1144,9 +1127,24 @@ export default function SchedulePage() {
     const container = scrollRef.current;
     if (!task || !container) {
       if (!task) {
+        const missingTask = notificationTaskToFocus;
         setNotificationTaskToFocus(null);
-        setIsNotificationNavigating(false);
-        setBadge("Task không còn tồn tại");
+        void (async () => {
+          try {
+            const params = new URLSearchParams({
+              scope: missingTask.scope,
+              ...(missingTask.scope === "USER" ? { ownerId: String(missingTask.ownerId) } : {}),
+            });
+            const response = await fetch(`/api/schedule/tasks?${params}`, { cache: "no-store" });
+            if (!response.ok) return;
+            const latestTasks = await response.json() as Task[];
+            if (!latestTasks.some((item) => item.id === missingTask.taskId)) setBadge("Task không còn tồn tại");
+          } catch {
+            // The next realtime update can still restore the task list if the check fails.
+          } finally {
+            setIsNotificationNavigating(false);
+          }
+        })();
       }
       return;
     }
