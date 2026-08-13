@@ -1,5 +1,7 @@
 export interface Task {
   id: number;
+  /** Incremented by the server; used to reject concurrent stale edits. */
+  version?: number;
   title: string;
   description: string;
   absDay: number;

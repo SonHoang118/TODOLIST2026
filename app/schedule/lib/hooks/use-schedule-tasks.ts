@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrowserScheduleTaskRepository } from "../repositories/browser-schedule-task-repository";
+import { ApiScheduleTaskRepository } from "../repositories/api-schedule-task-repository";
 import type { Task } from "../types";
 
-const repository = new BrowserScheduleTaskRepository();
+const repository = new ApiScheduleTaskRepository();
 
 export function useScheduleTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -35,8 +35,9 @@ export function useScheduleTasks() {
       return;
     }
     const timeoutId = window.setTimeout(() => {
-      void repository.save(tasks);
-      repository.announce(tasks);
+      void repository.save(tasks).catch(() => {
+        // A realtime event or the next successful change will reconcile the optimistic UI.
+      });
     }, 250);
     return () => window.clearTimeout(timeoutId);
   }, [isLoading, tasks]);

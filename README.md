@@ -61,6 +61,18 @@ cp .env.example .env.local
 
 Then update `DATABASE_URL` in `.env.local` with your Neon connection string.
 
+## Đồng bộ lịch cho nhiều người
+
+Lịch dùng Neon Postgres làm nguồn dữ liệu chung và Ably để đẩy thay đổi tức thì giữa các trình duyệt. Tạo một ứng dụng ở Ably rồi thêm khóa API vào `.env.local` (không đưa khóa này lên Git):
+
+```bash
+ABLY_API_KEY=your-ably-api-key
+```
+
+Mở `/schedule` ở các máy khác nhau để kiểm tra: thay đổi task trên một máy sẽ xuất hiện ngay trên các máy còn lại. Nếu Ably tạm không cấu hình hoặc mất kết nối, ứng dụng tự tải lại lịch chung mỗi 2 giây.
+
+Mỗi task có `version` do server tăng sau khi lưu để phát hiện sửa đồng thời. API hiện chưa gắn với phiên đăng nhập thực, vì phần chọn người dùng của giao diện đang là demo; hãy bổ sung xác thực trước khi đưa app lên Internet công khai.
+
 Also configure Cloudinary for avatar upload:
 
 ```bash
