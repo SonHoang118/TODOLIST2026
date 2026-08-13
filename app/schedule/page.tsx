@@ -134,36 +134,6 @@ interface SessionUser {
   avatar: string;
 }
 
-interface ApiTask {
-  id: number;
-  title: string;
-  description: string;
-  startAt: string;
-  endAt: string;
-  color: string;
-  label: string;
-  status: "PENDING" | "IN_PROGRESS" | "DONE";
-  assignedFromName: string | null;
-  createdByUserId: number | null;
-  createdByName: string | null;
-  createdByAvatar: string | null;
-  updatedByUserId: number | null;
-  updatedByName: string | null;
-  updatedByAvatar: string | null;
-  confirmedByUserIds: number[];
-}
-
-interface TasksApiResponse {
-  tasks?: ApiTask[];
-  version?: string;
-  error?: string;
-}
-
-interface TaskVersionApiResponse {
-  version?: string;
-  error?: string;
-}
-
 type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 type TaskLabelValue = "DEFAULT" | "PERSONAL";
 type ScheduleScope = "USER" | "COMPANY";
@@ -182,34 +152,7 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   DONE: "Đã hoàn thành",
 };
 
-const AUTH_STORAGE_KEY = "todo2026.currentUser";
-const TASK_DRAFT_STORAGE_PREFIX = "todo2026.tasksDraft";
-const COMPANY_DRAFT_KEY = "company";
-
 const SLOT_MS = 30 * 60 * 1000;
-const TASK_CACHE_TTL_MS = 30 * 1000;
-const TASK_VERSION_FALLBACK_POLL_MS = 6000;
-
-interface TaskCacheEntry {
-  tasks: Task[];
-  syncedSignature: string;
-  fetchedAt: number;
-}
-
-function taskCacheKey(scope: ScheduleScope, ownerUserId: number | null, actorUserId: number | null): string {
-  const ownerPart = scope === "COMPANY" ? "company" : String(ownerUserId ?? 0);
-  return `${scope}:${ownerPart}:actor:${actorUserId ?? 0}`;
-}
-
-interface LocalTaskDraft {
-  updatedAt: number;
-  synced: boolean;
-  tasks: Task[];
-}
-
-function taskDraftStorageKey(ownerUserId: number | typeof COMPANY_DRAFT_KEY): string {
-  return `${TASK_DRAFT_STORAGE_PREFIX}.${ownerUserId}`;
-}
 
 function taskSignature(tasks: Task[]): string {
   return JSON.stringify(
@@ -279,145 +222,12 @@ function ensureUniqueTaskIds(tasks: Task[]): Task[] {
   return changed ? normalized : tasks;
 }
 
-function sanitizeDraftTask(value: unknown): Task | null {
-  const task = (value ?? {}) as Partial<Task>;
-  if (
-    typeof task.id !== "number" ||
-    typeof task.title !== "string" ||
-    typeof task.description !== "string" ||
-    typeof task.absDay !== "number" ||
-    typeof task.slotIndex !== "number" ||
-    typeof task.span !== "number" ||
-    typeof task.color !== "string" ||
-    typeof task.label !== "string" ||
-    !isTaskStatus(task.status)
-  ) {
-    return null;
-  }
-
-  return {
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    absDay: task.absDay,
-    slotIndex: task.slotIndex,
-    span: Math.max(1, task.span),
-    color: task.color,
-    label: normalizeTaskLabel(task.label),
-    status: task.status,
-    assignedFromName: typeof task.assignedFromName === "string" ? task.assignedFromName : null,
-    createdByUserId: typeof task.createdByUserId === "number" ? task.createdByUserId : null,
-    createdByName: typeof task.createdByName === "string" ? task.createdByName : null,
-    createdByAvatar: typeof task.createdByAvatar === "string" ? task.createdByAvatar : null,
-    updatedByUserId: typeof task.updatedByUserId === "number" ? task.updatedByUserId : null,
-    updatedByName: typeof task.updatedByName === "string" ? task.updatedByName : null,
-    updatedByAvatar: typeof task.updatedByAvatar === "string" ? task.updatedByAvatar : null,
-    confirmedByUserIds: Array.isArray(task.confirmedByUserIds)
-      ? task.confirmedByUserIds
-          .map((id) => Number(id))
-          .filter((id) => Number.isFinite(id) && id > 0)
-      : [],
-  };
-}
-
-function readTaskDraft(ownerUserId: number | typeof COMPANY_DRAFT_KEY): LocalTaskDraft | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(taskDraftStorageKey(ownerUserId));
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as { updatedAt?: unknown; synced?: unknown; tasks?: unknown };
-    if (!Array.isArray(parsed.tasks)) return null;
-    const tasks = parsed.tasks
-      .map((item) => sanitizeDraftTask(item))
-      .filter((item): item is Task => item !== null);
-
-    return {
-      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-      synced: parsed.synced === true,
-      tasks,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeTaskDraft(ownerUserId: number | typeof COMPANY_DRAFT_KEY, tasks: Task[], synced: boolean): void {
-  if (typeof window === "undefined") return;
-  const payload: LocalTaskDraft = {
-    updatedAt: Date.now(),
-    synced,
-    tasks,
-  };
-  window.localStorage.setItem(taskDraftStorageKey(ownerUserId), JSON.stringify(payload));
-}
-
 function buildDateFromAbsDayAndSlot(absDay: number, slotIndex: number): Date {
   const date = absDayToDate(absDay);
   const hours = Math.floor(slotIndex / 2);
   const minutes = slotIndex % 2 === 0 ? 0 : 30;
   date.setHours(hours, minutes, 0, 0);
   return date;
-}
-
-function taskToApiInput(task: Task): {
-  title: string;
-  description: string;
-  startAt: string;
-  endAt: string;
-  color: string;
-  label: string;
-  status: TaskStatus;
-  assignedFromUserId: number | null;
-  createdByUserId: number | null;
-  updatedByUserId: number | null;
-  confirmedByUserIds: number[];
-} {
-  const start = buildDateFromAbsDayAndSlot(task.absDay, task.slotIndex);
-  const end = new Date(start.getTime() + Math.max(1, task.span) * SLOT_MS);
-  return {
-    title: task.title,
-    description: task.description,
-    startAt: start.toISOString(),
-    endAt: end.toISOString(),
-    color: task.color,
-    label: normalizeTaskLabel(task.label),
-    status: task.status,
-    assignedFromUserId: null,
-    createdByUserId: task.createdByUserId,
-    updatedByUserId: task.updatedByUserId,
-    confirmedByUserIds: task.confirmedByUserIds,
-  };
-}
-
-function apiTaskToLocalTask(apiTask: ApiTask): Task {
-  const start = new Date(apiTask.startAt);
-  const end = new Date(apiTask.endAt);
-  const absDay = dateToAbsDay(start);
-  const slotIndex = start.getHours() * 2 + (start.getMinutes() >= 30 ? 1 : 0);
-  const span = Math.max(1, Math.round((end.getTime() - start.getTime()) / SLOT_MS));
-
-  return {
-    id: apiTask.id,
-    title: apiTask.title,
-    description: apiTask.description,
-    absDay,
-    slotIndex,
-    span,
-    color: apiTask.color,
-    label: normalizeTaskLabel(apiTask.label),
-    status: apiTask.status,
-    assignedFromName: apiTask.assignedFromName,
-    createdByUserId: apiTask.createdByUserId,
-    createdByName: apiTask.createdByName,
-    createdByAvatar: apiTask.createdByAvatar,
-    updatedByUserId: apiTask.updatedByUserId,
-    updatedByName: apiTask.updatedByName,
-    updatedByAvatar: apiTask.updatedByAvatar,
-    confirmedByUserIds: Array.isArray(apiTask.confirmedByUserIds)
-      ? apiTask.confirmedByUserIds.filter((id) => Number.isFinite(id) && id > 0)
-      : [],
-  };
 }
 
 function withTaskAudit(task: Task, actor: SessionUser | null): Task {
@@ -613,23 +423,11 @@ export default function SchedulePage() {
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
-  const isHydratingTasksRef               = useRef(false);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
   const authUserIdRef                      = useRef<number | null>(null);
   const scheduleScopeRef                   = useRef<ScheduleScope>("USER");
   const isViewingOwnScheduleRef            = useRef(false);
-  const lastSyncedSignatureRef             = useRef("");
-  const hasPendingChangesRef               = useRef(false);
-  const tasksCacheRef                      = useRef<Map<string, TaskCacheEntry>>(new Map());
-  const loadTasksAbortRef                  = useRef<AbortController | null>(null);
-  const loadTasksRequestIdRef              = useRef(0);
-  const tasksEventSourceRef                = useRef<EventSource | null>(null);
-  const tasksVersionPollTimerRef           = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastRemoteVersionRef               = useRef("");
-  const pendingRemoteRefreshRef            = useRef(false);
-  const loadingStartedAtRef                = useRef<number | null>(null);
-  const loadingRequestIdRef                = useRef<number | null>(null);
   const interactionLockedRef               = useRef(true);
   const interactionUnlockTimerRef          = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taskEntranceTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1321,13 +1119,6 @@ export default function SchedulePage() {
       if (badgeShowTimerRef.current) {
         clearTimeout(badgeShowTimerRef.current);
       }
-      if (tasksVersionPollTimerRef.current) {
-        clearInterval(tasksVersionPollTimerRef.current);
-      }
-      if (tasksEventSourceRef.current) {
-        tasksEventSourceRef.current.close();
-      }
-      loadTasksAbortRef.current?.abort();
     };
   }, []);
 
@@ -1336,244 +1127,20 @@ export default function SchedulePage() {
   }, []);
 
   const loadAuthUsers = async () => {
-    try {
-      const res = await fetch("/api/users", { cache: "no-store" });
-      const data = (await res.json()) as { users?: SessionUser[] };
-      if (!res.ok || !Array.isArray(data.users)) return;
+    const fallbackUsers: SessionUser[] = [
+      { id: 1, name: "Ngô Thế Hiếu", role: "ADMIN", avatar: "" },
+      { id: 2, name: "Nhân viên A", role: "STAFF", avatar: "" },
+      { id: 3, name: "Nhân viên B", role: "STAFF", avatar: "" },
+    ];
 
-      const fetchedUsers = data.users;
-      setUsersForAuth(fetchedUsers);
-
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-      const parsed = raw ? (JSON.parse(raw) as { id?: number }) : null;
-      const activeId = typeof parsed?.id === "number" ? parsed.id : null;
-      const activeUser = fetchedUsers.find((u) => u.id === activeId) ?? null;
-
-      setSessionUser(activeUser);
-      setAuthUserId((prev) => prev ?? activeUser?.id ?? fetchedUsers[0]?.id ?? null);
-    } catch {
-      setSessionUser(null);
-    }
+    setUsersForAuth(fallbackUsers);
+    const activeUser = fallbackUsers[0] ?? null;
+    setSessionUser(activeUser);
+    setAuthUserId(activeUser?.id ?? null);
   };
 
-  const persistTasksToServer = async (
-    tasksToSave: Task[],
-    options?: { showBadge?: boolean; keepalive?: boolean },
-  ) => {
-    if (!sessionUser || isHydratingTasksRef.current) return;
-    if (scheduleScope === "USER" && !authUserId) return;
-
-    try {
-      const response = await fetch("/api/tasks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope: scheduleScope,
-          ownerUserId: scheduleScope === "USER" ? authUserId : undefined,
-          actorUserId: sessionUser.id,
-          tasks: tasksToSave.map(taskToApiInput),
-        }),
-        keepalive: options?.keepalive,
-      });
-      const data = (await response.json()) as TasksApiResponse;
-      if (!response.ok) {
-        throw new Error(data.error ?? "Không thể lưu task.");
-      }
-
-      setAuthError(null);
-      if (options?.showBadge) {
-        setBadge("Đã tự lưu");
-      }
-      lastSyncedSignatureRef.current = taskSignature(tasksToSave);
-      if (typeof data.version === "string") {
-        lastRemoteVersionRef.current = data.version;
-      }
-      hasPendingChangesRef.current = false;
-      writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, true);
-
-      if (pendingRemoteRefreshRef.current) {
-        pendingRemoteRefreshRef.current = false;
-        void loadTasks({ forceRefresh: true });
-      }
-    } catch (error) {
-      hasPendingChangesRef.current = true;
-      writeTaskDraft(scheduleScope === "USER" ? authUserId! : COMPANY_DRAFT_KEY, tasksToSave, false);
-      if (!options?.keepalive) {
-        setAuthError(error instanceof Error ? error.message : "Không thể lưu task.");
-      }
-    }
-  };
-
-  const loadTasks = async (options?: { forceRefresh?: boolean }) => {
-    const requestId = ++loadTasksRequestIdRef.current;
-    try {
-      isHydratingTasksRef.current = true;
-      lockInteractions();
-      setIsTaskExitActive(false);
-      const actorUserId = sessionUserRef.current?.id;
-      const scope = scheduleScopeRef.current;
-      const ownerUserId = authUserIdRef.current;
-      if (scope === "USER" && !ownerUserId) {
-        setTasks([]);
-        return;
-      }
-
-      const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId ?? null);
-      const cached = tasksCacheRef.current.get(cacheKey);
-      if (cached) {
-        setTasks(cached.tasks);
-        taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(cached.tasks));
-        lastSyncedSignatureRef.current = cached.syncedSignature;
-        hasPendingChangesRef.current = false;
-      }
-
-      const shouldRefresh = options?.forceRefresh || !cached || (Date.now() - cached.fetchedAt) > TASK_CACHE_TTL_MS;
-      const shouldShowLoading = !cached;
-
-      if (shouldShowLoading) {
-        loadingStartedAtRef.current = Date.now();
-        loadingRequestIdRef.current = requestId;
-        setIsScheduleLoading(true);
-      }
-
-      if (!shouldRefresh) {
-        return;
-      }
-
-      loadTasksAbortRef.current?.abort();
-      const controller = new AbortController();
-      loadTasksAbortRef.current = controller;
-
-      const params = new URLSearchParams();
-      params.set("scope", scope);
-      if (scope === "USER" && ownerUserId) {
-        params.set("ownerUserId", String(ownerUserId));
-      }
-      if (actorUserId) {
-        params.set("actorUserId", String(actorUserId));
-      }
-      const query = `/api/tasks?${params.toString()}`;
-      const response = await fetch(query, { cache: "no-store", signal: controller.signal });
-      const data = (await response.json()) as TasksApiResponse;
-      if (!response.ok || !Array.isArray(data.tasks)) {
-        throw new Error(data.error ?? "Không thể tải task.");
-      }
-      if (requestId !== loadTasksRequestIdRef.current) return;
-
-      if (typeof data.version === "string") {
-        lastRemoteVersionRef.current = data.version;
-      }
-      pendingRemoteRefreshRef.current = false;
-
-      const canViewPersonal = scope === "USER" && sessionUserRef.current?.id === ownerUserId;
-      const remoteTasks = ensureUniqueTaskIds(data.tasks
-        .map(apiTaskToLocalTask)
-        .filter((task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL));
-      const draftKey = scope === "USER" ? ownerUserId! : COMPANY_DRAFT_KEY;
-      const draft = readTaskDraft(draftKey);
-      const draftTasks = ensureUniqueTaskIds((draft?.tasks ?? []).filter(
-        (task) => canViewPersonal || normalizeTaskLabel(task.label) !== PERSONAL_TASK_LABEL,
-      ));
-
-      if (remoteTasks.length === 0 && draftTasks.length > 0) {
-        setTasks(draftTasks);
-        triggerTaskEntranceAnimation();
-        taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
-        lastSyncedSignatureRef.current = taskSignature(remoteTasks);
-        hasPendingChangesRef.current = true;
-        tasksCacheRef.current.set(cacheKey, {
-          tasks: draftTasks,
-          syncedSignature: lastSyncedSignatureRef.current,
-          fetchedAt: Date.now(),
-        });
-        setBadge("Đã khôi phục task từ bản nháp cục bộ");
-
-        if (sessionUserRef.current) {
-          window.setTimeout(() => {
-            void persistTasksToServer(draftTasks, { showBadge: true });
-          }, 0);
-        }
-        return;
-      }
-
-      if (draft && !draft.synced) {
-        const draftSignature = taskSignature(draftTasks);
-        const remoteSignature = taskSignature(remoteTasks);
-        if (draftSignature !== remoteSignature) {
-          setTasks(draftTasks);
-          triggerTaskEntranceAnimation();
-          taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(draftTasks));
-          lastSyncedSignatureRef.current = remoteSignature;
-          hasPendingChangesRef.current = true;
-          tasksCacheRef.current.set(cacheKey, {
-            tasks: draftTasks,
-            syncedSignature: remoteSignature,
-            fetchedAt: Date.now(),
-          });
-          setBadge("Đã khôi phục thay đổi chưa đồng bộ");
-
-          if (sessionUserRef.current) {
-            window.setTimeout(() => {
-              void persistTasksToServer(draftTasks, { showBadge: true });
-            }, 0);
-          }
-          return;
-        }
-      }
-
-      setTasks(remoteTasks);
-      triggerTaskEntranceAnimation();
-      taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(remoteTasks));
-      lastSyncedSignatureRef.current = taskSignature(remoteTasks);
-      hasPendingChangesRef.current = false;
-      tasksCacheRef.current.set(cacheKey, {
-        tasks: remoteTasks,
-        syncedSignature: lastSyncedSignatureRef.current,
-        fetchedAt: Date.now(),
-      });
-      writeTaskDraft(draftKey, remoteTasks, true);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      setAuthError(error instanceof Error ? error.message : "Không thể tải task.");
-      const scope = scheduleScopeRef.current;
-      const ownerUserId = authUserIdRef.current;
-      const actorUserId = sessionUserRef.current?.id ?? null;
-      const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId);
-      const cached = tasksCacheRef.current.get(cacheKey);
-      if (!cached) {
-        setTasks([]);
-      }
-      lastSyncedSignatureRef.current = "";
-      hasPendingChangesRef.current = false;
-    } finally {
-      if (requestId !== loadTasksRequestIdRef.current) return;
-      loadTasksAbortRef.current = null;
-
-      if (loadingRequestIdRef.current === requestId) {
-        const startedAt = loadingStartedAtRef.current ?? Date.now();
-        const elapsed = Date.now() - startedAt;
-        const minVisibleMs = 320;
-        const delay = Math.max(0, minVisibleMs - elapsed);
-
-        window.setTimeout(() => {
-          if (loadingRequestIdRef.current !== requestId) return;
-          setIsScheduleLoading(false);
-          loadingStartedAtRef.current = null;
-          loadingRequestIdRef.current = null;
-
-          // Keep a tiny safety lock so fast touch events don't create accidental tasks.
-          unlockInteractionsAfter(180);
-        }, delay);
-      } else {
-        unlockInteractionsAfter(120);
-      }
-
-      window.setTimeout(() => {
-        isHydratingTasksRef.current = false;
-      }, 0);
-    }
+  const loadTasks = async () => {
+    setIsScheduleLoading(false);
   };
 
   const handleViewUserChange = (nextUserId: number) => {
@@ -1606,187 +1173,8 @@ export default function SchedulePage() {
   };
 
   useEffect(() => {
-    if (scheduleScope === "USER" && !authUserId) return;
-    void loadTasks();
-  }, [authUserId, scheduleScope]);
-
-  useEffect(() => {
-    if (!sessionUser) return;
-    if (scheduleScope === "USER" && !authUserId) return;
-
-    if (tasksVersionPollTimerRef.current) {
-      clearInterval(tasksVersionPollTimerRef.current);
-      tasksVersionPollTimerRef.current = null;
-    }
-    if (tasksEventSourceRef.current) {
-      tasksEventSourceRef.current.close();
-      tasksEventSourceRef.current = null;
-    }
-
-    let disposed = false;
-
-    const createVersionQuery = () => {
-      const params = new URLSearchParams();
-      params.set("scope", scheduleScope);
-      if (scheduleScope === "USER" && authUserId) {
-        params.set("ownerUserId", String(authUserId));
-      }
-      params.set("actorUserId", String(sessionUser.id));
-      return params.toString();
-    };
-
-    const consumeRemoteVersion = (version: string) => {
-      if (!version || version === lastRemoteVersionRef.current) return;
-
-      if (hasPendingChangesRef.current) {
-        pendingRemoteRefreshRef.current = true;
-        setBadge("Có cập nhật mới từ người khác");
-        return;
-      }
-
-      lastRemoteVersionRef.current = version;
-      pendingRemoteRefreshRef.current = false;
-      void loadTasks({ forceRefresh: true });
-    };
-
-    const pollRemoteVersion = async () => {
-      try {
-        const response = await fetch(`/api/tasks/version?${createVersionQuery()}`, { cache: "no-store" });
-        const data = (await response.json()) as TaskVersionApiResponse;
-        if (!response.ok || typeof data.version !== "string") return;
-        consumeRemoteVersion(data.version);
-      } catch {
-        // Ignore temporary poll failures.
-      }
-    };
-
-    const startFallbackPoll = () => {
-      if (tasksVersionPollTimerRef.current || disposed) return;
-
-      tasksVersionPollTimerRef.current = setInterval(() => {
-        void pollRemoteVersion();
-      }, TASK_VERSION_FALLBACK_POLL_MS);
-    };
-
-    const query = createVersionQuery();
-    const es = new EventSource(`/api/tasks/events?${query}`);
-    tasksEventSourceRef.current = es;
-
-    es.addEventListener("tasks-version", (event) => {
-      try {
-        const payload = JSON.parse((event as MessageEvent).data) as TaskVersionApiResponse;
-        if (typeof payload.version === "string") {
-          consumeRemoteVersion(payload.version);
-        }
-      } catch {
-        // Ignore malformed events from transient proxies.
-      }
-    });
-
-    es.addEventListener("tasks-error", () => {
-      startFallbackPoll();
-    });
-
-    es.onerror = () => {
-      es.close();
-      if (tasksEventSourceRef.current === es) {
-        tasksEventSourceRef.current = null;
-      }
-      startFallbackPoll();
-    };
-
-    void pollRemoteVersion();
-
-    return () => {
-      disposed = true;
-      es.close();
-      if (tasksEventSourceRef.current === es) {
-        tasksEventSourceRef.current = null;
-      }
-      if (tasksVersionPollTimerRef.current) {
-        clearInterval(tasksVersionPollTimerRef.current);
-        tasksVersionPollTimerRef.current = null;
-      }
-    };
-  }, [authUserId, scheduleScope, sessionUser]);
-
-  useEffect(() => {
-    const draftKey = scheduleScope === "USER" ? authUserId : COMPANY_DRAFT_KEY;
-    if (!draftKey || isHydratingTasksRef.current) return;
-    const signature = taskSignature(tasks);
-    const isSynced = signature === lastSyncedSignatureRef.current;
-    hasPendingChangesRef.current = !isSynced;
-    writeTaskDraft(draftKey, tasks, isSynced);
-  }, [tasks, authUserId, scheduleScope]);
-
-  useEffect(() => {
     taskIdRef.current = Math.max(taskIdRef.current, maxTaskId(tasks));
-
-    const scope = scheduleScopeRef.current;
-    const ownerUserId = authUserIdRef.current;
-    const actorUserId = sessionUserRef.current?.id ?? null;
-    if (scope === "USER" && !ownerUserId) return;
-    const cacheKey = taskCacheKey(scope, scope === "USER" ? ownerUserId : null, actorUserId);
-    tasksCacheRef.current.set(cacheKey, {
-      tasks,
-      syncedSignature: lastSyncedSignatureRef.current,
-      fetchedAt: Date.now(),
-    });
   }, [tasks]);
-
-  useEffect(() => {
-    if (!sessionUser || isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
-    if (scheduleScope === "USER" && !authUserId) return;
-
-    const snapshot = tasks;
-    const t = setTimeout(async () => {
-      await persistTasksToServer(snapshot, { showBadge: true });
-    }, 15000);
-
-    return () => clearTimeout(t);
-  }, [tasks, authUserId, sessionUser, scheduleScope]);
-
-  useEffect(() => {
-    const flushPendingTasks = () => {
-      if (isHydratingTasksRef.current || !hasPendingChangesRef.current) return;
-
-      const ownerUserId = authUserIdRef.current;
-      const actorUser = sessionUserRef.current;
-      const scope = scheduleScopeRef.current;
-      if ((scope === "USER" && !ownerUserId) || !actorUser) return;
-
-      const snapshot = tasksRef.current;
-      writeTaskDraft(scope === "USER" ? ownerUserId! : COMPANY_DRAFT_KEY, snapshot, false);
-
-      void fetch("/api/tasks", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scope,
-          ownerUserId: scope === "USER" ? ownerUserId : undefined,
-          actorUserId: actorUser.id,
-          tasks: snapshot.map(taskToApiInput),
-        }),
-        keepalive: true,
-      });
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        flushPendingTasks();
-      }
-    };
-
-    window.addEventListener("beforeunload", flushPendingTasks);
-    window.addEventListener("pagehide", flushPendingTasks);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
-    return () => {
-      window.removeEventListener("beforeunload", flushPendingTasks);
-      window.removeEventListener("pagehide", flushPendingTasks);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, []);
 
   const handleAvatarPick = () => {
     if (!sessionUser) return;
@@ -1799,23 +1187,9 @@ export default function SchedulePage() {
     setAuthError(null);
 
     try {
-      const avatarUrl = await uploadAvatarToCloudinary(file);
-      const response = await fetch("/api/users", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-user-id": String(sessionUser.id),
-        },
-        body: JSON.stringify({ avatar: avatarUrl }),
-      });
-      const data = (await response.json()) as { user?: SessionUser; error?: string };
-      if (!response.ok || !data.user) {
-        throw new Error(data.error ?? "Không thể cập nhật avatar.");
-      }
-
-      setSessionUser(data.user);
-      setBadge("Đã cập nhật avatar");
-      await loadAuthUsers();
+      const localPreview = URL.createObjectURL(file);
+      setSessionUser((prev) => (prev ? { ...prev, avatar: localPreview } : prev));
+      setBadge("Đã cập nhật avatar cục bộ");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Không thể cập nhật avatar.");
     } finally {
