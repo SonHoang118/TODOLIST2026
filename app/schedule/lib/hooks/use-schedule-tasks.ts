@@ -39,8 +39,10 @@ export function useScheduleTasks(scope: ScheduleScope, ownerId: number | null) {
       skipNextSave.current = false;
       return;
     }
-    setIsSaving(true);
     const timeoutId = window.setTimeout(() => {
+      // Do not show a saving overlay while the user is still dragging/resizing.
+      // The debounce callback can be cancelled repeatedly before a request starts.
+      setIsSaving(true);
       void repository.save(tasks).catch(() => {
         // A realtime event or the next successful change will reconcile the optimistic UI.
       }).finally(() => {
