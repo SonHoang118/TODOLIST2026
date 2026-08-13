@@ -343,10 +343,25 @@ export default function SchedulePage() {
   const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
+  const viewStartSlot = viewStartAbsDay * SLOTS;
+  const viewEndSlot = (viewStartAbsDay + colCount) * SLOTS;
+  const multiDayTasksBeforeView = tasks
+    .filter((task) => isMultiDayTask(task) && (task.endAbsDay ?? task.absDay) * SLOTS + getMultiDayEndSlot(task) <= viewStartSlot)
+    .sort((first, second) => {
+      const firstEnd = (first.endAbsDay ?? first.absDay) * SLOTS + getMultiDayEndSlot(first);
+      const secondEnd = (second.endAbsDay ?? second.absDay) * SLOTS + getMultiDayEndSlot(second);
+      return secondEnd - firstEnd;
+    });
+  const multiDayTasksAfterView = tasks
+    .filter((task) => isMultiDayTask(task) && task.absDay * SLOTS + task.slotIndex >= viewEndSlot)
+    .sort((first, second) => first.absDay * SLOTS + first.slotIndex - (second.absDay * SLOTS + second.slotIndex));
+  const nearestMultiDayTaskBeforeView = multiDayTasksBeforeView[0];
+  const nearestMultiDayTaskAfterView = multiDayTasksAfterView[0];
+  const hasMultiDayEdgeIndicators = Boolean(nearestMultiDayTaskBeforeView || nearestMultiDayTaskAfterView);
   const multiDayLaneCount = multiDayBars.reduce((count, bar) => Math.max(count, bar.lane + 1), 0);
   const hasOverlappingMultiDayTasks = multiDayLaneCount > 1;
-  const multiDayLaneHeight = multiDayLaneCount > 0
-    ? (hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? 36 : multiDayLaneCount * 36 + 8)
+  const multiDayLaneHeight = multiDayLaneCount > 0 || hasMultiDayEdgeIndicators
+    ? (hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? 36 : Math.max(1, multiDayLaneCount) * 36 + 8)
     : 0;
 
   // Refs so gesture handlers always read current view values
@@ -644,6 +659,10 @@ export default function SchedulePage() {
 
       if (gs.current.touchedTaskId !== null) {
         const id = gs.current.touchedTaskId;
+        const task = tasksRef.current.find((item) => item.id === id);
+        // Multi-day tasks are edited from their detail modal, not repositioned or resized by gesture.
+        if (task && isMultiDayTask(task)) return;
+
         gs.current.draggingTaskId = id;
         gs.current.timer = setTimeout(() => {
           gs.current.longPressFired = true;
@@ -1277,6 +1296,20 @@ export default function SchedulePage() {
                 {Array.from({ length: colCount }, (_, day) => (
                   <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
                 ))}
+                {nearestMultiDayTaskBeforeView && (
+                  <div
+                    className={`pointer-events-none absolute z-20 rounded-r ${isHexColor(nearestMultiDayTaskBeforeView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskBeforeView.color, isDark)}`}
+                    style={{ left: 0, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskBeforeView.color) ? nearestMultiDayTaskBeforeView.color : undefined }}
+                    title={`Task gần nhất phía trước: ${nearestMultiDayTaskBeforeView.title}`}
+                  />
+                )}
+                {nearestMultiDayTaskAfterView && (
+                  <div
+                    className={`pointer-events-none absolute z-20 rounded-l ${isHexColor(nearestMultiDayTaskAfterView.color) ? "" : resolveTaskBgClass(nearestMultiDayTaskAfterView.color, isDark)}`}
+                    style={{ left: colCount * dayWidth - 4, top: 5, width: 4, height: 27, backgroundColor: isHexColor(nearestMultiDayTaskAfterView.color) ? nearestMultiDayTaskAfterView.color : undefined }}
+                    title={`Task gần nhất phía sau: ${nearestMultiDayTaskAfterView.title}`}
+                  />
+                )}
                 {hasOverlappingMultiDayTasks && !isMultiDayLaneExpanded ? (
                   <div className="sticky left-0 z-30 flex h-full w-[calc(100vw-44px)] items-center justify-center pointer-events-none">
                     <button
