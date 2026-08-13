@@ -9,7 +9,7 @@ import {
 } from "../lib/constants";
 import { absDayToDate, absDayToDateInput, currentTimeScrollTop, dateInputToAbsDay, dateToAbsDay, dayShortOf, getWeekDates, isSameDay, slotLabel, slotToTimeInput, timeInputToSlot } from "../lib/date";
 import { getMultiDayEndSlot, getMultiDayTaskLanes, isMultiDayTask, layoutMultiDayBars } from "../lib/multi-day";
-import { createAvatarPreview } from "../lib/avatar";
+import { uploadAvatarToCloudinary } from "../lib/avatar";
 import {
   buildDateFromAbsDayAndSlot,
   colorToPickerHex,
@@ -26,6 +26,7 @@ import {
   withTaskConfirmOnly,
 } from "../lib/domain/task";
 import { useScheduleTasks } from "../lib/hooks/use-schedule-tasks";
+import { useScheduleUsers } from "../lib/hooks/use-schedule-users";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
 import type { ScheduleScope, SessionUser, Task, TaskLabelValue, TaskStatus } from "../lib/types";
@@ -131,7 +132,7 @@ export default function SchedulePage() {
   const [enteringTaskId, setEnteringTaskId] = useState<number | null>(null);
   const [isTaskExitActive, setIsTaskExitActive] = useState(false);
   const [sessionUser, setSessionUser]     = useState<SessionUser | null>(null);
-  const [usersForAuth, setUsersForAuth]   = useState<SessionUser[]>([]);
+  const usersForAuth = useScheduleUsers();
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
@@ -912,22 +913,12 @@ export default function SchedulePage() {
   }, []);
 
   useEffect(() => {
-    void loadAuthUsers();
     setIsInteractionLocked(false);
-  }, []);
-
-  const loadAuthUsers = async () => {
-    const fallbackUsers: SessionUser[] = [
-      { id: 1, name: "Ngô Thế Hiếu", role: "ADMIN", avatar: "" },
-      { id: 2, name: "Nhân viên A", role: "STAFF", avatar: "" },
-      { id: 3, name: "Nhân viên B", role: "STAFF", avatar: "" },
-    ];
-
-    setUsersForAuth(fallbackUsers);
-    const activeUser = fallbackUsers[0] ?? null;
-    setSessionUser(activeUser);
-    setAuthUserId(activeUser?.id ?? null);
-  };
+    const firstUser = usersForAuth[0];
+    if (!firstUser) return;
+    setSessionUser((current) => usersForAuth.find((user) => user.id === current?.id) ?? firstUser);
+    setAuthUserId((current) => usersForAuth.some((user) => user.id === current) ? current : firstUser.id);
+  }, [usersForAuth]);
 
   const handleViewUserChange = (nextUserId: number) => {
     if (nextUserId === authUserIdRef.current) return;
@@ -973,9 +964,14 @@ export default function SchedulePage() {
     setAuthError(null);
 
     try {
-      const localPreview = await createAvatarPreview(file);
-      setSessionUser((prev) => (prev ? { ...prev, avatar: localPreview } : prev));
-      setBadge("Đã cập nhật avatar cục bộ");
+      const avatar = await uploadAvatarToCloudinary(file);
+      const response = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sessionUser.id, avatar }),
+      });
+      if (!response.ok) throw new Error("Không thể lưu avatar.");
+      setBadge("Đã cập nhật avatar cho cả nhóm");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Không thể cập nhật avatar.");
     } finally {

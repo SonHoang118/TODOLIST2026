@@ -73,6 +73,8 @@ Mở `/schedule` ở các máy khác nhau để kiểm tra: thay đổi task tr�
 
 Mỗi task có `version` do server tăng sau khi lưu để phát hiện sửa đồng thời. API hiện chưa gắn với phiên đăng nhập thực, vì phần chọn người dùng của giao diện đang là demo; hãy bổ sung xác thực trước khi đưa app lên Internet công khai.
 
+Danh sách nhân viên cũng được đọc từ bảng `schedule_users` trên Neon và đồng bộ tự động. Lần chạy đầu, bảng này tạo ba tài khoản mẫu; thay đổi avatar sẽ được lưu vào Neon và cập nhật cho mọi người đang mở app.
+
 Also configure Cloudinary for avatar upload:
 
 ```bash
