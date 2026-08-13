@@ -507,11 +507,16 @@ export default function SchedulePage() {
         return;
       }
 
-      // ── Action buttons (edit/remove) — no preventDefault so tap fires ─────
+      // ── Action buttons ────────────────────────────────────────────────────
       const actionEl = el?.closest<HTMLElement>("[data-action]");
       if (actionEl) {
-        // Prevent synthetic click after touch to avoid double-toggle on mobile.
-        e.preventDefault();
+        // Do not prevent the initial touch: a touch that starts on an action
+        // button must still be allowed to initiate a native scroll.
+        gs.current.startX = t.clientX;
+        gs.current.startY = t.clientY;
+        gs.current.startScrollLeft = container.scrollLeft;
+        gs.current.startScrollTop = container.scrollTop;
+        gs.current.didScroll = false;
         gs.current.pendingAction  = actionEl.dataset.action as "edit" | "remove" | "accept" | "complete" | "confirm";
         gs.current.pendingTaskId  = Number(actionEl.dataset.taskId);
         return;
@@ -708,11 +713,22 @@ export default function SchedulePage() {
         return;
       }
 
-      // Always execute pending action first to avoid dropping taps after tiny scroll jitter.
+      // An action button only fires for a short tap. This lets a swipe that begins
+      // on (for example) the complete checkbox scroll the schedule instead.
       if (gs.current.pendingAction !== null) {
         const action = gs.current.pendingAction;
         const taskId = gs.current.pendingTaskId!;
-        applyTaskAction(action, taskId);
+        const t = e.changedTouches[0];
+        const didMove = Math.abs(t.clientX - gs.current.startX) > DRAG_DELTA
+          || Math.abs(t.clientY - gs.current.startY) > DRAG_DELTA
+          || gs.current.didScroll;
+
+        if (!didMove) {
+          // Suppress the browser's follow-up click because the action is applied
+          // here, avoiding a double toggle on touch devices.
+          e.preventDefault();
+          applyTaskAction(action, taskId);
+        }
         gs.current.pendingAction = null;
         gs.current.pendingTaskId = null;
         gs.current.longPressFired = false;
@@ -1967,13 +1983,15 @@ export default function SchedulePage() {
                 <p className={`mt-1 text-xs ${th.subtext}`}>
                   {pushNotifications.permission === "unsupported"
                     ? "Trình duyệt hoặc thiết bị này chưa hỗ trợ thông báo đẩy."
+                    : pushNotifications.permission === "checking"
+                      ? "Đang kiểm tra quyền thông báo của thiết bị..."
                     : pushNotifications.permission === "denied"
                       ? "Bạn đã chặn thông báo. Hãy bật lại quyền trong cài đặt trình duyệt."
-                      : pushNotifications.isSubscribed
-                        ? "Đang nhận thông báo về việc được giao, cập nhật task và việc hôm nay lúc 6:00."
+                    : pushNotifications.isSubscribed
+                        ? "Đã bật và đăng ký thiết bị nhận thông báo."
                         : "Bật để nhận thông báo ngay cả khi DHS To do đang đóng."}
                 </p>
-                {sessionUser && pushNotifications.permission !== "unsupported" && pushNotifications.permission !== "denied" && (
+                {sessionUser && pushNotifications.permission !== "unsupported" && pushNotifications.permission !== "denied" && pushNotifications.permission !== "checking" && (
                   <button
                     type="button"
                     disabled={pushNotifications.isBusy}
@@ -1981,6 +1999,11 @@ export default function SchedulePage() {
                     className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${pushNotifications.isSubscribed ? "bg-zinc-700 text-zinc-200 hover:bg-zinc-600" : "bg-violet-600 text-white hover:bg-violet-500"}`}
                   >
                     {pushNotifications.isBusy ? "Đang xử lý..." : pushNotifications.isSubscribed ? "Tắt thông báo" : "Bật thông báo"}
+                  </button>
+                )}
+                {pushNotifications.permission === "granted" && (
+                  <button type="button" onClick={() => void pushNotifications.test()} className="mt-3 ml-2 rounded-lg bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-400 transition hover:bg-sky-500/25">
+                    Gửi thông báo thử
                   </button>
                 )}
                 {pushNotifications.error && <p className="mt-2 text-[11px] text-rose-400">{pushNotifications.error}</p>}

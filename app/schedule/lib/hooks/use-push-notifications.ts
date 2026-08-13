@@ -10,7 +10,7 @@ function fromBase64Url(value: string): ArrayBuffer {
 }
 
 export function usePushNotifications(userId: number | null) {
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported" | "checking">("checking");
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,5 +61,20 @@ export function usePushNotifications(userId: number | null) {
     }
   }, []);
 
-  return { permission, isSubscribed, isBusy, error, enable, disable };
+  const test = useCallback(async () => {
+    if (permission !== "granted") return;
+    setError(null);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("DHS To do", {
+        body: "Thông báo trên điện thoại đang hoạt động.",
+        icon: "/logoApp.png",
+        badge: "/logoApp.png",
+      });
+    } catch {
+      setError("Không thể hiển thị thông báo thử trên thiết bị này.");
+    }
+  }, [permission]);
+
+  return { permission, isSubscribed, isBusy, error, enable, disable, test };
 }
