@@ -1125,7 +1125,7 @@ export default function SchedulePage() {
         setHighlightedNotificationTaskId(null);
         setIsNotificationNavigating(false);
         notificationHighlightTimerRef.current = null;
-      }, 720);
+      }, 560);
     };
     const frame = requestAnimationFrame(() => {
       container.scrollTo({
@@ -1134,9 +1134,10 @@ export default function SchedulePage() {
         behavior: prefersReducedMotion ? "auto" : "smooth",
       });
       container.addEventListener("scrollend", highlightTask, { once: true });
-      // Keep this fallback independent from the navigation effect cleanup: setting the
-      // destination state to null re-renders immediately after the scroll starts.
-      window.setTimeout(highlightTask, prefersReducedMotion ? 30 : 1_200);
+      // The fallback is only used by browsers without scrollend. Scale it with the
+      // travel distance so it is unlikely to run while a long smooth scroll is active.
+      const scrollDistance = Math.hypot(targetLeft - container.scrollLeft, targetTop - container.scrollTop);
+      window.setTimeout(highlightTask, prefersReducedMotion ? 30 : Math.min(2_500, Math.max(900, scrollDistance * 0.12)));
       setBadge(`Đang xem: ${task.title}`);
       setNotificationTaskToFocus(null);
     });
