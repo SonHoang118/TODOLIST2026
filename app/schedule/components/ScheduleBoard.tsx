@@ -1275,19 +1275,25 @@ export default function SchedulePage() {
                   const canToggleDone = !isCompanySchedule
                     && isViewingOwnSchedule
                     && (task.status === "IN_PROGRESS" || task.status === "DONE");
-                  // The sticky content must be narrower than its task bar;
-                  // otherwise CSS has no room to move it while scrolling.
                   const stickyContentWidth = Math.min(width, 220);
+                  // Extend only the sticky constraint, not the visible task bar.
+                  // This lets its content stay at the left edge until the real
+                  // end of the task reaches that edge.
+                  const stickyContainerWidth = width + stickyContentWidth;
                   return (
                     <div
                       key={task.id}
-                      data-task-id={task.id}
-                      className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
-                      style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
+                      className="pointer-events-none absolute z-10 text-left text-[10px] font-semibold text-white"
+                      style={{ left, top: lane * 36 + 5, width: stickyContainerWidth, height: 27 }}
                     >
-                      {/* Stays visible during horizontal scroll, but its task bar bounds the sticky area. */}
                       <div
-                        className={`sticky z-10 flex h-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
+                        data-task-id={task.id}
+                        className={`pointer-events-auto absolute inset-y-0 left-0 rounded-lg shadow-sm transition hover:brightness-110 ${backgroundClass}`}
+                        style={{ width, backgroundColor }}
+                      />
+                      <div
+                        data-task-id={task.id}
+                        className={`pointer-events-auto sticky z-10 flex h-full min-w-0 items-center rounded-lg px-1 transition hover:brightness-110 ${backgroundClass}`}
                         style={{ left: TIME_W, width: stickyContentWidth, backgroundColor }}
                       >
                         {canToggleDone && (
