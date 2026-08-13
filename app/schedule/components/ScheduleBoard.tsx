@@ -140,7 +140,7 @@ export default function SchedulePage() {
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
   const { tasks, setTasks, isLoading: isScheduleLoading, isSaving: isScheduleSaving } = useScheduleTasks(scheduleScope, authUserId);
-  const { notifications, unreadCount, markAllRead } = useNotifications(sessionUser?.id ?? null);
+  const { notifications, unreadCount, isMarkingAllRead, recentlyReadCount, markAllRead } = useNotifications(sessionUser?.id ?? null);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
@@ -1761,7 +1761,16 @@ export default function SchedulePage() {
             </div>
             <button type="button" onClick={() => setNotificationsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`} aria-label="Đóng thông báo">✕</button>
           </div>
-          {unreadCount > 0 && <div className={`px-4 py-2.5 border-b ${th.border}`}><button type="button" onClick={() => void markAllRead()} className="text-xs font-medium text-violet-400 hover:text-violet-300">Đánh dấu tất cả là đã đọc</button></div>}
+          {(unreadCount > 0 || recentlyReadCount > 0) && <div className={`px-4 py-2.5 border-b ${th.border}`}>
+            {unreadCount > 0 ? (
+              <button type="button" onClick={() => void markAllRead()} className="text-xs font-medium text-violet-400 hover:text-violet-300">Đánh dấu tất cả là đã đọc</button>
+            ) : (
+              <p className={`flex items-center gap-2 text-xs ${th.subtext}`}>
+                {isMarkingAllRead && <span className="h-3 w-3 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" aria-label="Đang cập nhật" />}
+                Có {recentlyReadCount} thông báo đã được đọc
+              </p>
+            )}
+          </div>}
           <div className="flex-1 overflow-y-auto py-2">
             {notifications.length === 0 ? (
               <div className={`mx-4 mt-8 rounded-2xl border border-dashed ${th.border} px-5 py-10 text-center`}>
@@ -1772,10 +1781,17 @@ export default function SchedulePage() {
             ) : notifications.map((notification: AppNotification) => {
               const icon = notification.kind === "ASSIGNED" ? "↳" : notification.kind === "ACCEPTED" ? "✓" : notification.kind === "COMPLETED" ? "✓" : notification.kind === "COMPANY_CREATED" ? "+" : "✓";
               const iconColor = notification.kind === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : notification.kind === "COMPANY_CREATED" ? "bg-sky-500/20 text-sky-400" : "bg-violet-500/20 text-violet-400";
-              return <article key={notification.id} className={`mx-3 mb-2 flex gap-3 rounded-xl px-3 py-3 ${notification.isRead ? "opacity-70" : isDark ? "bg-violet-950/30" : "bg-violet-50"}`}>
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${iconColor}`}>{icon}</span>
+              const borderColor = notification.kind === "ASSIGNED" ? "border-violet-500/50" : notification.kind === "ACCEPTED" ? "border-amber-500/50" : notification.kind === "COMPLETED" ? "border-emerald-500/50" : notification.kind === "COMPANY_CREATED" ? "border-sky-500/50" : "border-rose-500/50";
+              const actor = usersForAuth.find((user) => user.name === notification.actorName);
+              const actorInitial = (notification.actorName ?? "H").trim().charAt(0).toUpperCase() || "H";
+              return <article key={notification.id} className={`mx-3 mb-2 flex gap-2.5 rounded-xl border border-l-4 px-3 py-3 ${borderColor} ${notification.isRead ? "opacity-70" : isDark ? "bg-violet-950/30" : "bg-violet-50"}`}>
+                {actor?.avatar ? (
+                  <img src={actor.avatar} alt={notification.actorName ?? "Người thực hiện"} className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${iconColor}`}>{actorInitial}</span>
+                )}
                 <div className="min-w-0 flex-1">
-                  <div className="flex gap-2"><p className="min-w-0 flex-1 text-sm font-semibold leading-5">{notification.title}</p>{!notification.isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-violet-500" />}</div>
+                  <div className="flex gap-2"><p className="min-w-0 flex-1 text-sm font-semibold leading-5">{notification.title}</p><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${iconColor}`}>{icon}</span>{!notification.isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-violet-500" />}</div>
                   <p className={`mt-0.5 text-xs leading-5 ${th.subtext}`}>{notification.body}</p>
                   <p className={`mt-1 text-[10px] ${th.subtext}`}>{new Date(notification.createdAt).toLocaleString("vi-VN", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
                 </div>

@@ -5,11 +5,17 @@ import type { AppNotification } from "../types";
 
 export function useNotifications(userId: number | null) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [recentlyReadCount, setRecentlyReadCount] = useState(0);
 
   const refresh = useCallback(async () => {
     if (userId === null) return;
     const response = await fetch(`/api/notifications?userId=${userId}`, { cache: "no-store" });
-    if (response.ok) setNotifications(await response.json() as AppNotification[]);
+    if (response.ok) {
+      const next = await response.json() as AppNotification[];
+      setNotifications(next);
+      if (next.some((item) => !item.isRead)) setRecentlyReadCount(0);
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -23,9 +29,15 @@ export function useNotifications(userId: number | null) {
     if (userId === null) return;
     const unreadIds = notifications.filter((item) => !item.isRead).map((item) => item.id);
     if (unreadIds.length === 0) return;
+    setIsMarkingAllRead(true);
+    setRecentlyReadCount(unreadIds.length);
     setNotifications((items) => items.map((item) => ({ ...item, isRead: true })));
-    await fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, all: true }) });
+    try {
+      await fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, all: true }) });
+    } finally {
+      setIsMarkingAllRead(false);
+    }
   }, [notifications, userId]);
 
-  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, markAllRead };
+  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, isMarkingAllRead, recentlyReadCount, markAllRead };
 }
