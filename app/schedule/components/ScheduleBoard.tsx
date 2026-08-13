@@ -1275,7 +1275,6 @@ export default function SchedulePage() {
                   const canToggleDone = !isCompanySchedule
                     && isViewingOwnSchedule
                     && (task.status === "IN_PROGRESS" || task.status === "DONE");
-                  const stickyContentWidth = Math.min(width, 220);
                   return (
                     <div
                       key={task.id}
@@ -1283,11 +1282,9 @@ export default function SchedulePage() {
                       className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${backgroundClass}`}
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
                     >
-                      {/* The negative trailing margin lets this content stay
-                          sticky until the task's actual right edge is reached. */}
                       <div
-                        className={`sticky z-10 flex h-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
-                        style={{ left: TIME_W, width: stickyContentWidth, marginRight: -stickyContentWidth, backgroundColor }}
+                        className={`sticky z-10 inline-flex h-full w-max max-w-full min-w-0 items-center rounded-lg px-1 ${backgroundClass}`}
+                        style={{ left: TIME_W, backgroundColor }}
                       >
                         {canToggleDone && (
                           <button
