@@ -5,8 +5,6 @@ import { ensureUniqueTaskIds } from "../domain/task";
 import type { ScheduleScope, Task } from "../types";
 import type { ScheduleTaskRepository } from "./schedule-task-repository";
 
-const LEGACY_STORAGE_KEY = "todolist:schedule-tasks:v1";
-
 type TaskEvent = { tasks: Task[]; deletedIds: number[] };
 type MutationResponse = { tasks: Task[]; deletedIds: number[] };
 
@@ -16,17 +14,7 @@ function taskSignature(task: Task): string {
   return JSON.stringify(content);
 }
 
-function parseLegacyTasks(): Task[] {
-  try {
-    const stored = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    const parsed = stored ? (JSON.parse(stored) as { tasks?: Task[] }) : null;
-    return Array.isArray(parsed?.tasks) ? ensureUniqueTaskIds(parsed.tasks) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Cloud-backed task repository. The browser store is only read once to migrate old local data. */
+/** Cloud-backed task repository. Neon is the only source of task data. */
 export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
   private knownTasks = new Map<number, Task>();
   private client: Ably.Realtime | null = null;
@@ -37,18 +25,8 @@ export class ApiScheduleTaskRepository implements ScheduleTaskRepository {
 
   async load(): Promise<Task[]> {
     const cloudTasks = await this.fetchCloudTasks();
-    if (cloudTasks.length > 0) {
-      this.remember(cloudTasks);
-      return cloudTasks;
-    }
-
-    const legacyTasks = this.scope === "USER" ? parseLegacyTasks() : [];
-    if (legacyTasks.length > 0) {
-      await this.write(legacyTasks);
-      this.remember(legacyTasks);
-      return legacyTasks;
-    }
-    return [];
+    this.remember(cloudTasks);
+    return cloudTasks;
   }
 
   save(tasks: Task[]): Promise<void> {

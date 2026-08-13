@@ -27,6 +27,7 @@ import {
 } from "../lib/domain/task";
 import { useScheduleTasks } from "../lib/hooks/use-schedule-tasks";
 import { useScheduleUsers } from "../lib/hooks/use-schedule-users";
+import { readActiveUserId } from "../lib/session";
 import { TaskAvatar } from "./TaskAvatar";
 import { TodayTaskList } from "./TodayTaskList";
 import type { ScheduleScope, SessionUser, Task, TaskLabelValue, TaskStatus } from "../lib/types";
@@ -136,7 +137,7 @@ export default function SchedulePage() {
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
-  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks(scheduleScope, authUserId);
+  const { tasks, setTasks, isLoading: isScheduleLoading, isSaving: isScheduleSaving } = useScheduleTasks(scheduleScope, authUserId);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
   const sessionUserRef                     = useRef<SessionUser | null>(null);
   const usersForAuthRef                    = useRef<SessionUser[]>([]);
@@ -916,8 +917,10 @@ export default function SchedulePage() {
     setIsInteractionLocked(false);
     const firstUser = usersForAuth[0];
     if (!firstUser) return;
-    setSessionUser((current) => usersForAuth.find((user) => user.id === current?.id) ?? firstUser);
-    setAuthUserId((current) => usersForAuth.some((user) => user.id === current) ? current : firstUser.id);
+    const savedUserId = readActiveUserId();
+    const activeUser = usersForAuth.find((user) => user.id === savedUserId) ?? firstUser;
+    setSessionUser(activeUser);
+    setAuthUserId((current) => usersForAuth.some((user) => user.id === current) ? current : activeUser.id);
   }, [usersForAuth]);
 
   const handleViewUserChange = (nextUserId: number) => {
@@ -1054,7 +1057,7 @@ export default function SchedulePage() {
     ? { backgroundColor: draggingTask.color }
     : undefined;
   const isViewingOwnSchedule = !isCompanySchedule && sessionUser !== null && authUserId === sessionUser.id;
-  const isUiLocked = isScheduleLoading || isInteractionLocked;
+  const isUiLocked = isScheduleLoading || isScheduleSaving || authBusy || isInteractionLocked;
   const gridStrongBorderClass = isCompanySchedule ? "border-rose-500/30" : th.border;
   const gridHalfBorderClass = isCompanySchedule ? "border-rose-500/15" : th.halfBorder;
   const gridDayBorderClass = isCompanySchedule ? "border-rose-500/25" : th.dayBorder;
@@ -1657,7 +1660,7 @@ export default function SchedulePage() {
           className={`absolute inset-0 z-40 transition-opacity duration-300 ${isUiLocked ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
           aria-hidden={!isUiLocked}
         >
-          <div className={`absolute inset-0 ${isScheduleLoading ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
+          <div className={`absolute inset-0 ${isScheduleLoading || isScheduleSaving || authBusy ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
           <div className="absolute -left-10 top-[22%] h-36 w-36 rounded-full bg-violet-500/25 blur-3xl animate-pulse" />
           <div className="absolute -right-8 top-[38%] h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
 
@@ -1672,12 +1675,12 @@ export default function SchedulePage() {
                   <p className="text-sm font-semibold text-white">
                     {isScheduleLoading
                       ? (scheduleScope === "COMPANY" ? "Đang tải lịch công ty" : "Đang tải lịch cá nhân")
-                      : "Đang sẵn sàng để thao tác"}
+                      : isScheduleSaving || authBusy ? "Đang đồng bộ thay đổi" : "Đang sẵn sàng để thao tác"}
                   </p>
                   <p className="text-[11px] text-zinc-300">
                     {isScheduleLoading
                       ? "Đồng bộ dữ liệu và dựng timeline..."
-                      : "Hoàn tất dựng giao diện, khóa chạm nhanh trong giây lát..."}
+                      : isScheduleSaving || authBusy ? "Đang lưu vào hệ thống chung..." : "Hoàn tất dựng giao diện, khóa chạm nhanh trong giây lát..."}
                   </p>
                 </div>
               </div>
@@ -1946,8 +1949,8 @@ export default function SchedulePage() {
                 <p className={`text-[11px] ${th.subtext}`}>Tên công việc</p>
                 <input
                   className="mt-1 w-full bg-transparent text-[16px] font-medium outline-none"
-                  value={task.title}
-                  onChange={(e) => patchTask(task.id, { title: e.target.value })}
+                  defaultValue={task.title}
+                  onBlur={(e) => patchTask(task.id, { title: e.target.value })}
                   placeholder="Nhập tên công việc"
                 />
               </div>
@@ -1956,8 +1959,8 @@ export default function SchedulePage() {
                 <p className={`text-[11px] ${th.subtext}`}>Mô tả</p>
                 <textarea
                   className="mt-1 min-h-20 w-full resize-none bg-transparent text-[16px] outline-none"
-                  value={task.description}
-                  onChange={(e) => patchTask(task.id, { description: e.target.value })}
+                  defaultValue={task.description}
+                  onBlur={(e) => patchTask(task.id, { description: e.target.value })}
                   placeholder="Nhập mô tả"
                 />
               </div>
