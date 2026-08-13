@@ -1295,7 +1295,7 @@ export default function SchedulePage() {
                               event.stopPropagation();
                               applyTaskAction("complete", task.id);
                             }}
-                            className="mr-1 flex h-4 w-4 shrink-0 items-center justify-center"
+                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                             title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                             aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                           >
