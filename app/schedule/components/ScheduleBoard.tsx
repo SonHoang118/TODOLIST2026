@@ -31,6 +31,7 @@ import { useNotifications } from "../lib/hooks/use-notifications";
 import { usePushNotifications } from "../lib/hooks/use-push-notifications";
 import { readActiveUserId } from "../lib/session";
 import { TaskAvatar } from "./TaskAvatar";
+import { TaskEditModal } from "./TaskEditModal";
 import { TodayTaskList } from "./TodayTaskList";
 import type { AppNotification, ScheduleScope, SessionUser, Task, TaskLabelValue, TaskStatus } from "../lib/types";
 
@@ -2150,7 +2151,26 @@ export default function SchedulePage() {
           </div>
       </div>
 
-      {/* ── Review card (touch) ──────────────────────────────────────────── */}
+      {/* ── Task edit modal ──────────────────────────────────────────────── */}
+      {reviewTaskId !== null && (() => {
+        const task = tasks.find((item) => item.id === reviewTaskId);
+        if (!task) return null;
+        return (
+          <TaskEditModal
+            task={task}
+            isCompanySchedule={isCompanySchedule}
+            users={usersForAuth}
+            currentUser={sessionUser}
+            onClose={() => setReviewTaskId(null)}
+            onDelete={() => {
+              if (applyTaskAction("remove", task.id)) setReviewTaskId(null);
+            }}
+            onPatch={(patch) => patchTask(task.id, patch)}
+          />
+        );
+      })()}
+
+      {/* Legacy review card retained temporarily while the new UI settles. */}
       {reviewTaskId !== null && (() => {
         const task = tasks.find(t => t.id === reviewTaskId);
         if (!task) return null;
@@ -2166,7 +2186,7 @@ export default function SchedulePage() {
           .filter((name, idx, arr) => arr.indexOf(name) === idx);
         return (
           <div
-            className="absolute inset-0 z-50 flex items-center justify-center bg-black/60"
+            className="hidden"
             onClick={() => setReviewTaskId(null)}
           >
             <div
@@ -2412,18 +2432,7 @@ export default function SchedulePage() {
                 value={editDescription}
                 onChange={e => setEditDescription(e.target.value)}
               />
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <div>
-                  <p className="text-xs text-zinc-400 mb-1">Nhãn</p>
-                  <select
-                    className={`w-full ${th.inputBg} text-inherit rounded-xl px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-violet-500/60`}
-                    value={editLabel}
-                    onChange={e => setEditLabel(normalizeTaskLabel(e.target.value))}
-                  >
-                    <option value={DEFAULT_TASK_LABEL}>{TASK_LABEL_TEXT.DEFAULT}</option>
-                    <option value={PERSONAL_TASK_LABEL}>{TASK_LABEL_TEXT.PERSONAL}</option>
-                  </select>
-                </div>
+              <div className="mt-2">
                 {!isCompanySchedule && (
                   <div>
                     <p className="text-xs text-zinc-400 mb-1">Trạng thái</p>
