@@ -2165,6 +2165,7 @@ export default function SchedulePage() {
             onDelete={() => {
               if (applyTaskAction("remove", task.id)) setReviewTaskId(null);
             }}
+            onAccept={() => applyTaskAction("accept", task.id)}
             onPatch={(patch) => patchTask(task.id, patch)}
           />
         );
