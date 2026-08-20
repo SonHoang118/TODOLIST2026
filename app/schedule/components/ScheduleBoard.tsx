@@ -2334,12 +2334,14 @@ export default function SchedulePage() {
                   </p>
                   <label className="mt-3 block min-w-0 max-w-full overflow-hidden">
                     <span className={`text-[11px] ${th.subtext}`}>Mốc ngày để xóa task</span>
-                    <input
-                      type="date"
-                      value={bulkDeleteAfterDate}
-                      onChange={(event) => setBulkDeleteAfterDate(event.target.value)}
-                      className={`mt-1 block h-9 min-w-0 max-w-full w-full box-border rounded-lg px-2 text-sm outline-none ${th.inputBg}`}
-                    />
+                    <span className={`mt-1 flex h-10 min-w-0 w-full max-w-full items-center overflow-hidden rounded-lg ${th.inputBg}`}>
+                      <input
+                        type="date"
+                        value={bulkDeleteAfterDate}
+                        onChange={(event) => setBulkDeleteAfterDate(event.target.value)}
+                        className="schedule-bulk-date-input block h-full min-w-0 w-full max-w-full border-0 bg-transparent px-3 py-0 text-sm leading-none outline-none"
+                      />
+                    </span>
                   </label>
                   <button
                     type="button"
