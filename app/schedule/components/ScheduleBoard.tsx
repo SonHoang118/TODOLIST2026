@@ -40,6 +40,8 @@ import type { AppNotification, ScheduleScope, SessionUser, Task, TaskLabelValue,
 
 type RgbColor = { r: number; g: number; b: number };
 
+const DEFAULT_TODAY_COLUMN_COLOR = "#2E1065";
+
 const TIME_GRADIENT_ANCHORS: Array<{ minute: number; color: string }> = [
   { minute: 0, color: "#020617" },
   { minute: 120, color: "#1E293B" },
@@ -130,7 +132,7 @@ export default function SchedulePage() {
   const [dayWidth, setDayWidth]           = useState(DAY_W);
   const [isDark, setIsDark]               = useState(true);
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
-  const [todayColumnColor, setTodayColumnColor] = useState("#2E1065");
+  const [todayColumnColor, setTodayColumnColor] = useState(DEFAULT_TODAY_COLUMN_COLOR);
   const [todayColorPickerOpen, setTodayColorPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -236,6 +238,7 @@ export default function SchedulePage() {
   };
   const todayColumnStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 15 : 30}%, transparent)` };
   const todayHeaderStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 20 : 40}%, transparent)` };
+  const todayWeekdayStyle = { color: `color-mix(in srgb, ${todayColumnColor} 55%, ${isDark ? "white" : "black"})` };
 
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
@@ -1367,10 +1370,13 @@ export default function SchedulePage() {
                   style={{ width: dayWidth, ...(isToday ? todayHeaderStyle : {}) }}
                   className={`flex flex-col items-center justify-center border-l ${th.border} shrink-0`}
                 >
-                  <span className={`text-[10px] font-medium uppercase ${isToday ? "text-violet-400" : "text-zinc-500"}`}>
+                  <span className={`text-[10px] font-medium uppercase ${isToday ? "" : "text-zinc-500"}`} style={isToday ? todayWeekdayStyle : undefined}>
                     {dayShortOf(date)}
                   </span>
-                  <span className={`text-base font-bold leading-tight ${isToday ? "text-violet-300 bg-violet-600 rounded-full w-7 h-7 flex items-center justify-center" : "text-zinc-200"}`}>
+                  <span
+                    className={`text-base font-bold leading-tight ${isToday ? "rounded-full w-7 h-7 flex items-center justify-center text-white" : "text-zinc-200"}`}
+                    style={isToday ? { backgroundColor: todayColumnColor } : undefined}
+                  >
                     {date.getDate()}
                   </span>
                 </div>
@@ -2226,8 +2232,6 @@ export default function SchedulePage() {
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
           onClick={() => setTodayColorPickerOpen(false)}
-          onTouchStart={(event) => event.stopPropagation()}
-          onTouchMove={(event) => event.stopPropagation()}
         >
           <div
             className={`w-fit max-w-full rounded-2xl p-4 shadow-2xl ring-1 ring-white/15 ${th.modalBg}`}
@@ -2241,6 +2245,14 @@ export default function SchedulePage() {
               <button type="button" onClick={() => setTodayColorPickerOpen(false)} className={`flex h-8 w-8 items-center justify-center rounded-lg ${th.btnSecondary}`} aria-label="Đóng bảng chọn màu">✕</button>
             </div>
             <HexColorPicker color={todayColumnColor} onChange={setTodayColumnColor} />
+            <button
+              type="button"
+              onClick={() => setTodayColumnColor(DEFAULT_TODAY_COLUMN_COLOR)}
+              disabled={todayColumnColor.toUpperCase() === DEFAULT_TODAY_COLUMN_COLOR}
+              className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-default disabled:opacity-45 ${th.btnSecondary}`}
+            >
+              Đặt lại màu mặc định
+            </button>
           </div>
         </div>
       )}
