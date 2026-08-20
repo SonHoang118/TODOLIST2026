@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
 import { SLOTS, STATUS_LABEL } from "../lib/constants";
-import { absDayToDate, absDayToDateInput, dateInputToAbsDay, dayShortOf, slotLabel, slotToTimeInput, timeInputToSlot } from "../lib/date";
+import { absDayToDate, absDayToDateInput, dateInputToAbsDay, dayShortOf } from "../lib/date";
 import { colorToDisplayHex } from "../lib/domain/task";
 import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
 import type { SessionUser, Task } from "../lib/types";
+import { HalfHourTimePicker } from "./HalfHourTimePicker";
 
 interface TaskEditModalProps {
   task: Task;
@@ -31,15 +32,6 @@ function DatePickerField({ date, value, min, onChange }: { date: Date; value: st
     <label className="relative min-w-0 cursor-pointer whitespace-nowrap">
       <span>{displayDate(date)}</span>
       <input type="date" value={value} min={min} onChange={(event) => onChange(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Chọn ngày" />
-    </label>
-  );
-}
-
-function TimePickerField({ value, label, onChange }: { value: string; label: string; onChange: (value: string) => void }) {
-  return (
-    <label className="relative cursor-pointer whitespace-nowrap tabular-nums">
-      <span>{label}</span>
-      <input type="time" step="1800" value={value} onChange={(event) => onChange(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Chọn giờ" />
     </label>
   );
 }
@@ -201,9 +193,9 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
             <div className="mt-6 flex items-center justify-between gap-3 text-lg font-bold">
               <DatePickerField date={startDate} value={absDayToDateInput(task.absDay)} onChange={(value) => { const day = dateInputToAbsDay(value); if (day !== null) patchAndMarkChanged({ absDay: day }); }} />
               <div className="flex items-center gap-3 whitespace-nowrap tabular-nums">
-                <TimePickerField value={slotToTimeInput(task.slotIndex)} label={slotLabel(task.slotIndex)} onChange={(value) => { const slot = timeInputToSlot(value); if (slot !== null) patchAndMarkChanged({ slotIndex: slot }); }} />
+                <HalfHourTimePicker value={task.slotIndex} maxSlot={46} onChange={(slot) => patchAndMarkChanged({ slotIndex: slot, span: Math.min(task.span, 47 - slot) })} ariaLabel="Chọn giờ bắt đầu" />
                 <span className="flex w-4 items-center justify-center leading-none">−</span>
-                <TimePickerField value={slotToTimeInput(task.slotIndex + task.span)} label={slotLabel(task.slotIndex + task.span)} onChange={(value) => { const endSlot = timeInputToSlot(value); if (endSlot !== null) patchAndMarkChanged({ span: Math.max(1, endSlot - task.slotIndex) }); }} />
+                <HalfHourTimePicker value={task.slotIndex + task.span} minSlot={task.slotIndex + 1} onChange={(endSlot) => patchAndMarkChanged({ span: endSlot - task.slotIndex })} ariaLabel="Chọn giờ kết thúc" />
                 <span className="text-sm text-zinc-500">{task.span * 30} phút</span>
               </div>
             </div>
@@ -212,13 +204,13 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
               <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
                 <DatePickerField date={startDate} value={absDayToDateInput(task.absDay)} onChange={(value) => { const day = dateInputToAbsDay(value); if (day !== null) patchAndMarkChanged({ absDay: day, endAbsDay: Math.max(day + 1, endAbsDay) }); }} />
                 <span className="text-sm text-zinc-500">Bắt đầu</span>
-                <TimePickerField value={slotToTimeInput(task.slotIndex)} label={slotLabel(task.slotIndex)} onChange={(value) => { const slot = timeInputToSlot(value); if (slot !== null) patchAndMarkChanged({ slotIndex: slot }); }} />
+                <HalfHourTimePicker value={task.slotIndex} onChange={(slot) => patchAndMarkChanged({ slotIndex: slot })} ariaLabel="Chọn giờ bắt đầu" />
               </div>
               <div className="pl-16 text-4xl font-light leading-none">↓</div>
               <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
                 <DatePickerField date={endDate} min={absDayToDateInput(task.absDay)} value={absDayToDateInput(endAbsDay)} onChange={(value) => { const day = dateInputToAbsDay(value); if (day !== null) patchAndMarkChanged({ endAbsDay: Math.max(task.absDay + 1, day) }); }} />
                 <span className="text-sm text-zinc-500">Kết thúc</span>
-                <TimePickerField value={slotToTimeInput(getMultiDayEndSlot(task))} label={slotLabel(getMultiDayEndSlot(task))} onChange={(value) => { const slot = timeInputToSlot(value); if (slot !== null) patchAndMarkChanged({ endSlotIndex: slot }); }} />
+                <HalfHourTimePicker value={getMultiDayEndSlot(task)} onChange={(slot) => patchAndMarkChanged({ endSlotIndex: slot })} ariaLabel="Chọn giờ kết thúc" />
               </div>
               <p className="sr-only">{dayShortOf(startDate)} đến {dayShortOf(endDate)}</p>
             </div>
