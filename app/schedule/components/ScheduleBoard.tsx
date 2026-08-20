@@ -52,26 +52,30 @@ type StoredScheduleSettings = {
 };
 
 const TIME_GRADIENT_ANCHORS: Array<{ minute: number; color: string }> = [
-  { minute: 0, color: "#020617" },
-  { minute: 120, color: "#1E293B" },
-  { minute: 240, color: "#0F172A" },
-  { minute: 270, color: "#334155" },
-  { minute: 300, color: "#748CAB" },
-  { minute: 360, color: "#E4C1F9" },
-  { minute: 390, color: "#FBC4AB" },
-  { minute: 420, color: "#FFDDBB" },
-  { minute: 480, color: "#A0C4FF" },
-  { minute: 570, color: "#4EA8DE" },
-  { minute: 660, color: "#0077B6" },
-  { minute: 720, color: "#FFFFFF" },
-  { minute: 990, color: "#FFB703" },
-  { minute: 1020, color: "#FB8500" },
-  { minute: 1050, color: "#D00000" },
-  { minute: 1080, color: "#6A0DAD" },
-  { minute: 1110, color: "#1D3557" },
-  { minute: 1140, color: "#0F172A" },
-  { minute: 1320, color: "#020617" },
-  { minute: 1410, color: "#1E293B" },
+  { minute: 0, color: "#020617" },    // 00:00
+  { minute: 60, color: "#101829" },   // 01:00
+  { minute: 120, color: "#1E293B" },  // 02:00
+  { minute: 180, color: "#172033" },  // 03:00
+  { minute: 240, color: "#0F172A" },  // 04:00
+  { minute: 300, color: "#748CAB" },  // 05:00
+  { minute: 360, color: "#E4C1F9" },  // 06:00
+  { minute: 420, color: "#FFDDBB" },  // 07:00
+  { minute: 480, color: "#A0C4FF" },  // 08:00
+  { minute: 540, color: "#69B1E9" },  // 09:00
+  { minute: 600, color: "#3498D1" },  // 10:00
+  { minute: 660, color: "#0077B6" },  // 11:00
+  { minute: 720, color: "#FFFFFF" },  // 12:00
+  { minute: 780, color: "#FFEFC7" },  // 13:00
+  { minute: 840, color: "#FFDF8F" },  // 14:00
+  { minute: 900, color: "#FFCF57" },  // 15:00
+  { minute: 960, color: "#FFBF1F" },  // 16:00
+  { minute: 1020, color: "#FB8500" }, // 17:00
+  { minute: 1080, color: "#6A0DAD" }, // 18:00
+  { minute: 1140, color: "#0F172A" }, // 19:00
+  { minute: 1200, color: "#0B1124" }, // 20:00
+  { minute: 1260, color: "#060C1D" }, // 21:00
+  { minute: 1320, color: "#020617" }, // 22:00
+  { minute: 1380, color: "#151D2F" }, // 23:00
 ];
 
 function hexToRgb(hex: string): RgbColor {
