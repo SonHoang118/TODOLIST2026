@@ -297,21 +297,31 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
             {commentsLoading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-transparent" aria-hidden /><span>Đang tải</span></> : <span>{commenters.length} comment</span>}
             {!commentsLoading && <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 transition-transform ${commentsOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
           </button>
-          {commentsOpen && !commentsLoading && <div className="mt-4 max-h-[220px] space-y-7 overflow-y-auto pr-2">
-            {commenters.length === 0 && <p className="text-sm text-zinc-500">Chưa có bình luận.</p>}
-            {commenters.map((comment) => (
-              <div key={comment.id} className={`flex gap-3 ${comment.id === newCommentId ? "schedule-comment-enter" : ""}`}>
-                <SmallAvatar name={comment.authorName} avatar={comment.authorAvatar} />
-                <div className="min-w-0 text-sm leading-snug">
-                  <p>
-                    <span className="font-bold">{comment.authorUserId === currentUser?.id ? "Tôi" : comment.authorName}</span>
-                    <span className="ml-1 text-zinc-500">{commentTimeLabel(comment.createdAt)}</span>
-                    {comment.authorUserId === currentUser?.id && <button type="button" onClick={() => void deleteComment(comment.id)} disabled={deletingCommentId === comment.id} className="ml-2 font-medium text-red-400 transition hover:text-red-300 disabled:opacity-50">{deletingCommentId === comment.id ? "Đang xóa" : "Xóa"}</button>}
-                  </p>
-                  <p className="mt-1 whitespace-pre-wrap break-words text-zinc-100">{comment.content}</p>
-                </div>
+          {commentsOpen && <div className="mt-4 h-[220px] overflow-y-auto pr-2">
+            {!commentsLoading && commenters.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-zinc-600" aria-label="Chưa có bình luận">
+                <svg viewBox="0 0 24 24" fill="none" className="h-14 w-14" aria-hidden>
+                  <path d="M20 11.5a7.5 7.5 0 0 1-8 7.48 8.7 8.7 0 0 1-3.45-.93L4 19.5l1.42-3.8A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-7">
+                {commenters.map((comment) => (
+                  <div key={comment.id} className={`flex gap-3 ${comment.id === newCommentId ? "schedule-comment-enter" : ""}`}>
+                    <SmallAvatar name={comment.authorName} avatar={comment.authorAvatar} />
+                    <div className="min-w-0 text-sm leading-snug">
+                      <p>
+                        <span className="font-bold">{comment.authorUserId === currentUser?.id ? "Tôi" : comment.authorName}</span>
+                        <span className="ml-1 text-zinc-500">{commentTimeLabel(comment.createdAt)}</span>
+                        {comment.authorUserId === currentUser?.id && <button type="button" onClick={() => void deleteComment(comment.id)} disabled={deletingCommentId === comment.id} className="ml-2 font-medium text-red-400 transition hover:text-red-300 disabled:opacity-50">{deletingCommentId === comment.id ? "Đang xóa" : "Xóa"}</button>}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-zinc-100">{comment.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>}
         </div>
       </section>
