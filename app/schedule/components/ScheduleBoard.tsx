@@ -52,30 +52,30 @@ type StoredScheduleSettings = {
 };
 
 const TIME_GRADIENT_ANCHORS: Array<{ minute: number; color: string }> = [
-  { minute: 0, color: "#020617" },    // 00:00
-  { minute: 60, color: "#101829" },   // 01:00
-  { minute: 120, color: "#1E293B" },  // 02:00
-  { minute: 180, color: "#172033" },  // 03:00
-  { minute: 240, color: "#0F172A" },  // 04:00
-  { minute: 300, color: "#748CAB" },  // 05:00
-  { minute: 360, color: "#E4C1F9" },  // 06:00
-  { minute: 420, color: "#FFDDBB" },  // 07:00
-  { minute: 480, color: "#A0C4FF" },  // 08:00
-  { minute: 540, color: "#69B1E9" },  // 09:00
-  { minute: 600, color: "#3498D1" },  // 10:00
-  { minute: 660, color: "#0077B6" },  // 11:00
-  { minute: 720, color: "#FFFFFF" },  // 12:00
-  { minute: 780, color: "#FFEFC7" },  // 13:00
-  { minute: 840, color: "#FFDF8F" },  // 14:00
-  { minute: 900, color: "#FFCF57" },  // 15:00
-  { minute: 960, color: "#FFBF1F" },  // 16:00
-  { minute: 1020, color: "#FB8500" }, // 17:00
-  { minute: 1080, color: "#6A0DAD" }, // 18:00
-  { minute: 1140, color: "#0F172A" }, // 19:00
-  { minute: 1200, color: "#0B1124" }, // 20:00
-  { minute: 1260, color: "#060C1D" }, // 21:00
-  { minute: 1320, color: "#020617" }, // 22:00
-  { minute: 1380, color: "#151D2F" }, // 23:00
+  { minute: 0, color: "#090b2f" },    // 00:00
+  { minute: 60, color: "#0b0d38" },   // 01:00
+  { minute: 120, color: "#0c1042" },  // 02:00
+  { minute: 180, color: "#12164c" },  // 03:00
+  { minute: 240, color: "#211e58" },  // 04:00
+  { minute: 300, color: "#49345f" },  // 05:00
+  { minute: 360, color: "#80556d" },  // 06:00
+  { minute: 420, color: "#b47c70" },  // 07:00
+  { minute: 480, color: "#d5a06b" },  // 08:00
+  { minute: 540, color: "#e7bc6b" },  // 09:00
+  { minute: 600, color: "#f1d078" },  // 10:00
+  { minute: 660, color: "#f7de83" },  // 11:00
+  { minute: 720, color: "#ffe88a" },  // 12:00
+  { minute: 780, color: "#f8db7d" },  // 13:00
+  { minute: 840, color: "#ebc570" },  // 14:00
+  { minute: 900, color: "#d8a865" },  // 15:00
+  { minute: 960, color: "#c08765" },  // 16:00
+  { minute: 1020, color: "#a4676d" }, // 17:00
+  { minute: 1080, color: "#824e79" }, // 18:00
+  { minute: 1140, color: "#603b72" }, // 19:00
+  { minute: 1200, color: "#442d65" }, // 20:00
+  { minute: 1260, color: "#302254" }, // 21:00
+  { minute: 1320, color: "#1c1845" }, // 22:00
+  { minute: 1380, color: "#101137" }, // 23:00
 ];
 
 function hexToRgb(hex: string): RgbColor {
