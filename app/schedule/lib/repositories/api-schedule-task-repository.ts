@@ -12,6 +12,7 @@ function taskSignature(task: Task): string {
   const content = { ...task };
   delete content.version;
   delete content.updatedAt;
+  delete content.commentCount;
   return JSON.stringify(content);
 }
 

@@ -1604,6 +1604,14 @@ export default function SchedulePage() {
                   && h >= (isUltraCompactCard ? 90 : 66)
                   && (!isCompanySchedule || h >= 100);
                 const showCompanyMeta = h >= 100;
+                const visibleCommentPrecedingRows = (showDescription ? 1 : 0)
+                  + (showSubtitle ? 1 : 0)
+                  + (!isCompanySchedule && task.assignedFromName ? 1 : 0)
+                  + (isCompanySchedule && showCompanyMeta && creatorName ? 1 : 0)
+                  + (isCompanySchedule && showCompanyMeta && editorName ? 1 : 0);
+                const showCommentCount = (task.commentCount ?? 0) > 0
+                  && !isUltraCompactCard
+                  && h >= 72 + visibleCommentPrecedingRows * 14;
                 const actionButtonClass = isUltraCompactCard
                   ? "self-end rounded-md border px-1.5 py-0.5 text-[8px] font-semibold shadow-md"
                   : "self-end rounded-md border px-2 py-0.5 text-[9px] font-semibold shadow-md";
@@ -1722,6 +1730,15 @@ export default function SchedulePage() {
                       <div className={`flex items-center gap-1.5 text-white/65 ${metaTextClass} truncate`}>
                         <span>from:</span>
                         <TaskAvatar name={task.assignedFromName} avatar={usersForAuth.find((user) => user.name === task.assignedFromName)?.avatar ?? null} size={avatarSize} />
+                      </div>
+                    )}
+
+                    {showCommentCount && (
+                      <div className={`mt-1 inline-flex w-fit items-center gap-1 rounded-full border border-white/20 bg-black/20 px-1.5 py-0.5 text-white/80 ${metaTextClass}`} aria-label={`${task.commentCount} bình luận`}>
+                        <span className="font-semibold tabular-nums">{task.commentCount}</span>
+                        <svg viewBox="0 0 20 20" fill="none" className="h-3 w-3" aria-hidden>
+                          <path d="M16.5 9.5a6.5 6.5 0 0 1-7 6.48 7.5 7.5 0 0 1-2.65-.7L3 16.5l1.2-3.25A6.5 6.5 0 1 1 16.5 9.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
                       </div>
                     )}
 
@@ -2188,6 +2205,7 @@ export default function SchedulePage() {
               if (applyTaskAction("remove", task.id)) setReviewTaskId(null);
             }}
             onAccept={() => applyTaskAction("accept", task.id)}
+            onCommentCountChange={(count) => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, commentCount: count } : item))}
             onPatch={(patch) => patchTask(task.id, patch)}
           />
         );

@@ -22,6 +22,7 @@ interface TaskEditModalProps {
   onClose: () => void;
   onDelete: () => void;
   onAccept: () => void;
+  onCommentCountChange: (count: number) => void;
   onPatch: (patch: Partial<Task>) => void;
 }
 
@@ -66,7 +67,7 @@ function commentTimeLabel(createdAt: string) {
   return `${Math.floor(hours / 24)} ngày trước`;
 }
 
-export function TaskEditModal({ task, isCompanySchedule, scheduleScope, scheduleOwnerId, isOverdue, isReadOnly, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
+export function TaskEditModal({ task, isCompanySchedule, scheduleScope, scheduleOwnerId, isOverdue, isReadOnly, isDark, users, currentUser, onClose, onDelete, onAccept, onCommentCountChange, onPatch }: TaskEditModalProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [confirmersOpen, setConfirmersOpen] = useState(false);
@@ -118,6 +119,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
       if (!response.ok) throw new Error("Không thể gửi bình luận.");
       const savedComment = await response.json() as TaskComment;
       setCommenters((current) => [savedComment, ...current]);
+      onCommentCountChange(commenters.length + 1);
       setNewCommentId(savedComment.id);
       setCommentDraft("");
       setCommentsOpen(true);
@@ -140,6 +142,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
       });
       if (!response.ok) throw new Error("Không thể xóa bình luận.");
       setCommenters((current) => current.filter((comment) => comment.id !== commentId));
+      onCommentCountChange(Math.max(0, commenters.length - 1));
     } catch (error) {
       setCommentError(error instanceof Error ? error.message : "Không thể xóa bình luận.");
     } finally {
