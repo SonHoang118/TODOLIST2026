@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+const AUTO_PROMPT_STORAGE_KEY = "dhs-todo:notification-permission-prompted";
+
 function fromBase64Url(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
@@ -46,6 +48,15 @@ export function usePushNotifications(userId: number | null) {
       setIsBusy(false);
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (userId === null || permission === "checking" || permission === "unsupported" || permission === "denied" || isSubscribed) return;
+    if (localStorage.getItem(AUTO_PROMPT_STORAGE_KEY) === "true") return;
+
+    // Mark it before requesting so React Strict Mode cannot open the prompt twice.
+    localStorage.setItem(AUTO_PROMPT_STORAGE_KEY, "true");
+    queueMicrotask(() => void enable());
+  }, [enable, isSubscribed, permission, userId]);
 
   const disable = useCallback(async () => {
     const registration = await navigator.serviceWorker.ready;
