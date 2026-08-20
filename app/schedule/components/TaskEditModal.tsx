@@ -31,6 +31,12 @@ function displayDate(date: Date) {
   return `${dayShortOf(date)}, ${day}/${month}/${date.getFullYear()}`;
 }
 
+function statusBadgeClass(status: Task["status"]): string {
+  if (status === "DONE") return "border border-emerald-400/25 bg-emerald-500/15 text-emerald-400";
+  if (status === "IN_PROGRESS") return "border border-sky-400/25 bg-sky-500/15 text-sky-400";
+  return "border border-amber-400/25 bg-amber-500/15 text-amber-400";
+}
+
 function DatePickerField({ date, value, min, onChange }: { date: Date; value: string; min?: string; onChange: (value: string) => void }) {
   return (
     <label className="relative min-w-0 cursor-pointer whitespace-nowrap">
@@ -202,7 +208,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
         </div>
 
         <div className="flex h-16 items-center justify-between border-b border-white/15 px-[18px]">
-          {isOverdue ? <span className={`rounded-md px-4 py-2 text-sm font-bold ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "Đã hết hạn" : "Quá hạn"}</span> : isCompanySchedule ? (
+          {isOverdue ? <span className={`rounded-md border px-4 py-2 text-sm font-bold ${isCompanySchedule ? "border-zinc-400/25 bg-zinc-400/15 text-zinc-300" : "border-red-400/25 bg-red-500/15 text-red-400"}`}>{isCompanySchedule ? "Đã hết hạn" : "Quá hạn"}</span> : isCompanySchedule ? (
             <div ref={confirmersRef} className="relative min-w-0">
               <button type="button" onClick={() => setConfirmersOpen((open) => !open)} aria-expanded={confirmersOpen} className="flex min-w-0 items-center gap-2 text-sm font-bold">
                 <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 shrink-0 transition-transform ${confirmersOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -225,9 +231,9 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
             </div>
           ) : (
             task.assignedFromName && task.status === "PENDING" ? (
-              <button type="button" onClick={() => { setHasChanges(true); onAccept(); }} className="rounded-md bg-amber-400 px-5 py-2 text-sm font-bold text-black transition hover:bg-amber-300">Nhận</button>
+              <button type="button" onClick={() => { setHasChanges(true); onAccept(); }} className="rounded-md border border-amber-400/25 bg-amber-500/15 px-5 py-2 text-sm font-bold text-amber-400 transition hover:bg-amber-500/25">Nhận</button>
             ) : (
-              <span className="rounded-md bg-[#5b4932] px-5 py-2 text-sm font-semibold text-amber-500">
+              <span className={`rounded-md px-5 py-2 text-sm font-semibold ${statusBadgeClass(task.status)}`}>
                 {task.status === "PENDING" ? "Đang chờ" : STATUS_LABEL[task.status]}
               </span>
             )
