@@ -166,7 +166,6 @@ export default function SchedulePage() {
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const todayColorPickerRef                 = useRef<HTMLDivElement>(null);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -237,15 +236,6 @@ export default function SchedulePage() {
   };
   const todayColumnStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 15 : 30}%, transparent)` };
   const todayHeaderStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 20 : 40}%, transparent)` };
-
-  useEffect(() => {
-    if (!todayColorPickerOpen) return;
-    const closePicker = (event: PointerEvent) => {
-      if (!todayColorPickerRef.current?.contains(event.target as Node)) setTodayColorPickerOpen(false);
-    };
-    document.addEventListener("pointerdown", closePicker);
-    return () => document.removeEventListener("pointerdown", closePicker);
-  }, [todayColorPickerOpen]);
 
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
@@ -1994,12 +1984,18 @@ export default function SchedulePage() {
           className={`absolute inset-0 transition-opacity duration-200 ${settingsOpen ? "bg-black/40" : "bg-black/0"}`}
           onClick={() => setSettingsOpen(false)}
         />
-        <div className={`relative w-72 max-w-[88vw] h-full ${th.root} flex flex-col border-l ${th.border} shadow-2xl transform transition-transform duration-300 ease-out ${settingsOpen ? "translate-x-0" : "translate-x-full"}`}>
+        <div
+          className={`relative w-72 max-w-[88vw] h-full ${th.root} flex flex-col border-l ${th.border} shadow-2xl transform transition-transform duration-300 ease-out ${settingsOpen ? "translate-x-0" : "translate-x-full"}`}
+          style={{ touchAction: "pan-y", overscrollBehavior: "contain" }}
+          onTouchStart={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+          onWheel={(event) => event.stopPropagation()}
+        >
             <div className={`flex items-center justify-between px-4 py-4 border-b ${th.border} shrink-0`}>
               <h2 className="font-semibold text-base">Cài đặt</h2>
               <button onClick={() => setSettingsOpen(false)} className={`w-8 h-8 flex items-center justify-center rounded-lg ${th.subtext}`}>✕</button>
             </div>
-            <div className="flex-1 px-4 py-5 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 touch-pan-y">
               <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3`}>
                 <p className={`text-[11px] uppercase tracking-wide ${th.subtext}`}>Tài khoản đang dùng</p>
                 {sessionUser ? (
@@ -2167,7 +2163,7 @@ export default function SchedulePage() {
                 </button>
               </div>
 
-              <div ref={todayColorPickerRef} className={`relative flex items-center justify-between py-4 border-b ${th.border}`}>
+              <div className={`flex items-center justify-between py-4 border-b ${th.border}`}>
                 <div>
                   <p className="text-sm font-medium">Màu cột hôm nay</p>
                   <p className={`text-xs ${th.subtext} mt-0.5 font-mono uppercase`}>{todayColumnColor}</p>
@@ -2180,15 +2176,6 @@ export default function SchedulePage() {
                   aria-label="Chọn màu cột hôm nay"
                   aria-expanded={todayColorPickerOpen}
                 />
-                {todayColorPickerOpen && (
-                  <div className={`absolute right-0 top-[58px] z-30 rounded-xl p-3 shadow-2xl ring-1 ring-black/10 ${th.modalBg}`}>
-                    <HexColorPicker color={todayColumnColor} onChange={setTodayColumnColor} />
-                    <div className={`mt-2 flex items-center justify-between gap-4 text-xs ${th.subtext}`}>
-                      <span>Màu cột hôm nay</span>
-                      <span className="font-mono uppercase">{todayColumnColor}</span>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Infinite horizontal scroll toggle */}
@@ -2234,6 +2221,29 @@ export default function SchedulePage() {
             </div>
           </div>
       </div>
+
+      {todayColorPickerOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
+          onClick={() => setTodayColorPickerOpen(false)}
+          onTouchStart={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+        >
+          <div
+            className={`w-fit max-w-full rounded-2xl p-4 shadow-2xl ring-1 ring-white/15 ${th.modalBg}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-6">
+              <div>
+                <p className="text-sm font-semibold">Màu cột hôm nay</p>
+                <p className={`mt-0.5 font-mono text-xs uppercase ${th.subtext}`}>{todayColumnColor}</p>
+              </div>
+              <button type="button" onClick={() => setTodayColorPickerOpen(false)} className={`flex h-8 w-8 items-center justify-center rounded-lg ${th.btnSecondary}`} aria-label="Đóng bảng chọn màu">✕</button>
+            </div>
+            <HexColorPicker color={todayColumnColor} onChange={setTodayColumnColor} />
+          </div>
+        </div>
+      )}
 
       {/* ── Task edit modal ──────────────────────────────────────────────── */}
       {reviewTaskId !== null && (() => {
