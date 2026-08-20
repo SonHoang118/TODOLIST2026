@@ -193,9 +193,9 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
             <div className="mt-6 flex items-center justify-between gap-3 text-lg font-bold">
               <DatePickerField date={startDate} value={absDayToDateInput(task.absDay)} onChange={(value) => { const day = dateInputToAbsDay(value); if (day !== null) patchAndMarkChanged({ absDay: day }); }} />
               <div className="flex items-center gap-3 whitespace-nowrap tabular-nums">
-                <HalfHourTimePicker value={task.slotIndex} maxSlot={46} onChange={(slot) => patchAndMarkChanged({ slotIndex: slot, span: Math.min(task.span, 47 - slot) })} ariaLabel="Chọn giờ bắt đầu" />
+                <HalfHourTimePicker value={task.slotIndex} maxSlot={Math.min(47, task.slotIndex + task.span - 1)} onChange={(slot) => patchAndMarkChanged({ slotIndex: slot, span: task.slotIndex + task.span - slot })} ariaLabel="Chọn giờ bắt đầu" />
                 <span className="flex w-4 items-center justify-center leading-none">−</span>
-                <HalfHourTimePicker value={task.slotIndex + task.span} minSlot={task.slotIndex + 1} onChange={(endSlot) => patchAndMarkChanged({ span: endSlot - task.slotIndex })} ariaLabel="Chọn giờ kết thúc" />
+                <HalfHourTimePicker value={task.slotIndex + task.span} minSlot={task.slotIndex + 1} maxSlot={48} includeNextMidnight onChange={(endSlot) => patchAndMarkChanged({ span: endSlot - task.slotIndex })} ariaLabel="Chọn giờ kết thúc" />
                 <span className="text-sm text-zinc-500">{task.span * 30} phút</span>
               </div>
             </div>

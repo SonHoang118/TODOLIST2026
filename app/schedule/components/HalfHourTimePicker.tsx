@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { slotLabel } from "../lib/date";
 
 interface HalfHourTimePickerProps {
@@ -8,25 +9,47 @@ interface HalfHourTimePickerProps {
   onChange: (slot: number) => void;
   minSlot?: number;
   maxSlot?: number;
+  includeNextMidnight?: boolean;
   ariaLabel?: string;
 }
 
 const HALF_HOUR_SLOTS = Array.from({ length: 48 }, (_, slot) => slot);
+const timeLabel = (slot: number) => slot === 48 ? "00:00" : slotLabel(slot);
 
-export function HalfHourTimePicker({ value, onChange, minSlot = 0, maxSlot = 47, ariaLabel = "Chọn giờ" }: HalfHourTimePickerProps) {
+export function HalfHourTimePicker({ value, onChange, minSlot = 0, maxSlot = 47, includeNextMidnight = false, ariaLabel = "Chọn giờ" }: HalfHourTimePickerProps) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
-  const safeValue = Math.max(0, Math.min(47, value));
-  const availableSlots = HALF_HOUR_SLOTS.filter((slot) => slot >= minSlot && slot <= maxSlot);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const highestSlot = includeNextMidnight ? 48 : 47;
+  const safeValue = Math.max(0, Math.min(highestSlot, value));
+  const slots = includeNextMidnight ? [...HALF_HOUR_SLOTS, 48] : HALF_HOUR_SLOTS;
+  const availableSlots = slots.filter((slot) => slot >= minSlot && slot <= maxSlot);
+
+  const togglePicker = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuWidth = 112;
+    const menuHeight = 224;
+    const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.left + rect.width / 2 - menuWidth / 2));
+    const top = rect.bottom + menuHeight + 8 <= window.innerHeight
+      ? rect.bottom + 8
+      : Math.max(8, rect.top - menuHeight - 8);
+    setMenuPosition({ left, top });
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("pointerdown", close);
-    requestAnimationFrame(() => selectedRef.current?.scrollIntoView({ block: "center" }));
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
 
@@ -34,25 +57,21 @@ export function HalfHourTimePicker({ value, onChange, minSlot = 0, maxSlot = 47,
     <div ref={rootRef} className="relative inline-flex">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={togglePicker}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 tabular-nums transition hover:bg-white/10"
+        className="rounded px-0.5 py-0.5 tabular-nums transition hover:bg-white/10"
       >
-        <span>{slotLabel(safeValue)}</span>
-        <svg viewBox="0 0 20 20" fill="none" className={`h-4 w-4 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden>
-          <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {timeLabel(safeValue)}
       </button>
 
-      {open && (
-        <div role="listbox" aria-label={ariaLabel} className="absolute left-1/2 top-full z-30 mt-2 max-h-56 w-28 -translate-x-1/2 overflow-y-auto rounded-xl border border-white/15 bg-zinc-800 p-1.5 shadow-2xl">
+      {open && menuPosition && createPortal(
+        <div ref={menuRef} role="listbox" aria-label={ariaLabel} className="fixed z-[100] max-h-56 w-28 overflow-y-auto rounded-xl border border-white/15 bg-zinc-800 p-1.5 shadow-2xl" style={menuPosition}>
           {availableSlots.map((slot) => {
             const selected = slot === safeValue;
             return (
               <button
-                ref={selected ? selectedRef : undefined}
                 key={slot}
                 type="button"
                 role="option"
@@ -63,11 +82,12 @@ export function HalfHourTimePicker({ value, onChange, minSlot = 0, maxSlot = 47,
                 }}
                 className={`block w-full rounded-lg px-3 py-2 text-center text-sm tabular-nums transition ${selected ? "bg-violet-600 font-bold text-white" : "text-zinc-100 hover:bg-white/10"}`}
               >
-                {slotLabel(slot)}
+                {timeLabel(slot)}
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
