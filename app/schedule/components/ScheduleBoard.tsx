@@ -321,7 +321,10 @@ export default function SchedulePage() {
   const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
   const bulkDeleteCutoffAbsDay = dateInputToAbsDay(bulkDeleteAfterDate);
-  const bulkDeleteTaskCount = bulkDeleteCutoffAbsDay === null ? 0 : tasks.filter((task) => task.absDay > bulkDeleteCutoffAbsDay).length;
+  const shouldBulkDeleteTask = (task: Task, cutoffAbsDay: number) => isMultiDayTask(task)
+    ? (task.endAbsDay ?? task.absDay) > cutoffAbsDay
+    : task.absDay < cutoffAbsDay;
+  const bulkDeleteTaskCount = bulkDeleteCutoffAbsDay === null ? 0 : tasks.filter((task) => shouldBulkDeleteTask(task, bulkDeleteCutoffAbsDay)).length;
   const multiDayTaskLanes = getMultiDayTaskLanes(tasks);
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
   const viewStartSlot = viewStartAbsDay * SLOTS;
@@ -1201,20 +1204,21 @@ export default function SchedulePage() {
   };
 
   const handleBulkDeleteAfterDate = () => {
+    if (scheduleScope !== "USER" || sessionUser === null || authUserId !== sessionUser.id) return;
     const cutoffAbsDay = dateInputToAbsDay(bulkDeleteAfterDate);
     if (cutoffAbsDay === null) {
       setBadge("Vui lòng chọn ngày hợp lệ");
       return;
     }
-    const tasksToDelete = tasksRef.current.filter((task) => task.absDay > cutoffAbsDay);
+    const tasksToDelete = tasksRef.current.filter((task) => shouldBulkDeleteTask(task, cutoffAbsDay));
     if (tasksToDelete.length === 0) {
-      setBadge("Không có task nào sau ngày đã chọn");
+      setBadge("Không có task nào phù hợp với mốc đã chọn");
       return;
     }
 
     const cutoffLabel = absDayToDate(cutoffAbsDay).toLocaleDateString("vi-VN");
     const shouldDelete = window.confirm(
-      `Bạn có chắc muốn xóa ${tasksToDelete.length} task có ngày bắt đầu sau ${cutoffLabel} không? Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn xóa ${tasksToDelete.length} task theo mốc ${cutoffLabel} không? Task một ngày trước mốc và task nhiều ngày kết thúc sau mốc sẽ bị xóa. Hành động này không thể hoàn tác.`,
     );
     if (!shouldDelete) return;
 
@@ -2322,29 +2326,31 @@ export default function SchedulePage() {
                 </datalist>
               </div>
 
-              <div className={`mt-2 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-3`}>
-                <p className="text-sm font-semibold text-red-400">Xóa nhiều task</p>
-                <p className={`mt-1 text-[11px] leading-4 ${th.subtext}`}>
-                  Xóa các task có ngày bắt đầu sau ngày được chọn trong lịch hiện tại.
-                </p>
-                <label className="mt-3 block">
-                  <span className={`text-[11px] ${th.subtext}`}>Xóa task sau ngày</span>
-                  <input
-                    type="date"
-                    value={bulkDeleteAfterDate}
-                    onChange={(event) => setBulkDeleteAfterDate(event.target.value)}
-                    className={`mt-1 h-9 w-full rounded-lg px-2 text-sm outline-none ${th.inputBg}`}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleBulkDeleteAfterDate}
-                  disabled={isScheduleLoading || bulkDeleteTaskCount === 0}
-                  className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-500 disabled:cursor-default disabled:opacity-45"
-                >
-                  {isScheduleLoading ? "Đang tải task..." : `Xóa ${bulkDeleteTaskCount} task`}
-                </button>
-              </div>
+              {scheduleScope === "USER" && sessionUser !== null && authUserId === sessionUser.id && (
+                <div className="mt-2 min-w-0 overflow-hidden rounded-xl border border-rose-300/20 bg-rose-300/[0.04] px-3 py-3">
+                  <p className="text-sm font-semibold text-rose-300">Xóa nhiều task</p>
+                  <p className={`mt-1 text-[11px] leading-4 ${th.subtext}`}>
+                    Xóa task một ngày trước mốc; task nhiều ngày chỉ bị xóa khi ngày kết thúc sau mốc.
+                  </p>
+                  <label className="mt-3 block min-w-0 max-w-full overflow-hidden">
+                    <span className={`text-[11px] ${th.subtext}`}>Mốc ngày để xóa task</span>
+                    <input
+                      type="date"
+                      value={bulkDeleteAfterDate}
+                      onChange={(event) => setBulkDeleteAfterDate(event.target.value)}
+                      className={`mt-1 block h-9 min-w-0 max-w-full w-full box-border rounded-lg px-2 text-sm outline-none ${th.inputBg}`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteAfterDate}
+                    disabled={isScheduleLoading || bulkDeleteTaskCount === 0}
+                    className="mt-3 w-full rounded-lg border border-rose-300/20 bg-rose-400/70 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-400/85 disabled:cursor-default disabled:opacity-45"
+                  >
+                    {isScheduleLoading ? "Đang tải task..." : `Xóa ${bulkDeleteTaskCount} task`}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
       </div>
