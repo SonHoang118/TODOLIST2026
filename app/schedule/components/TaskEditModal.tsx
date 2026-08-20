@@ -62,6 +62,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const confirmersRef = useRef<HTMLDivElement>(null);
   const isMultiDay = isMultiDayTask(task);
   const startDate = absDayToDate(task.absDay);
   const endAbsDay = task.endAbsDay ?? task.absDay;
@@ -71,20 +72,31 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
   const ownerAvatar = task.createdByAvatar ?? currentUser?.avatar ?? null;
   const titleAvatarName = isCompanySchedule ? (task.updatedByName ?? ownerName) : ownerName;
   const titleAvatar = isCompanySchedule ? (task.updatedByAvatar ?? ownerAvatar) : ownerAvatar;
-  const commenters = [
+  const [commenters, setCommenters] = useState(() => [
     { name: ownerName, avatar: ownerAvatar, time: "5 phút trước", text: "À! chiều nhớ cầm thêm bản sau khi chỉnh sửa đi nhé mọi người." },
     { name: "Tôi", avatar: currentUser?.avatar ?? null, time: "20 phút trước", text: "Có cần cầm thêm gì không ạ ?" },
     { name: "Nguyễn Minh Anh", avatar: null, time: "32 phút trước", text: "Mình đã kiểm tra lại hồ sơ, phần thông tin khách hàng đã đầy đủ rồi nhé." },
     { name: "Trần Hoàng", avatar: null, time: "45 phút trước", text: "Mọi người nhớ mang theo bản gốc để đối chiếu." },
     { name: ownerName, avatar: ownerAvatar, time: "1 giờ trước", text: "Mình sẽ đến sớm khoảng 10 phút để chuẩn bị." },
     { name: "Tôi", avatar: currentUser?.avatar ?? null, time: "2 giờ trước", text: "Vâng ạ, em đã ghi chú lại rồi." },
-  ];
+  ]);
+  const [commentDraft, setCommentDraft] = useState("");
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
   const patchAndMarkChanged = (patch: Partial<Task>) => {
     setHasChanges(true);
     onPatch(patch);
+  };
+  const submitComment = () => {
+    const text = commentDraft.trim();
+    if (!text) return;
+    setCommenters((current) => [
+      { name: currentUser?.name ?? "Tôi", avatar: currentUser?.avatar ?? null, time: "Vừa xong", text },
+      ...current,
+    ]);
+    setCommentDraft("");
+    setCommentsOpen(true);
   };
 
   useEffect(() => {
@@ -95,6 +107,15 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
     document.addEventListener("pointerdown", closePicker);
     return () => document.removeEventListener("pointerdown", closePicker);
   }, [pickerOpen]);
+
+  useEffect(() => {
+    if (!confirmersOpen) return;
+    const closeConfirmers = (event: PointerEvent) => {
+      if (!confirmersRef.current?.contains(event.target as Node)) setConfirmersOpen(false);
+    };
+    document.addEventListener("pointerdown", closeConfirmers);
+    return () => document.removeEventListener("pointerdown", closeConfirmers);
+  }, [confirmersOpen]);
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onClick={onClose}>
@@ -115,12 +136,14 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
               </div>
             </div>
           )}
-          <button type="button" onClick={onClose} aria-label={hasChanges ? "Hoàn tất chỉnh sửa" : "Đóng"} className={`absolute right-4 top-3 flex h-11 w-11 items-center justify-center rounded-full text-3xl font-light leading-none transition ${hasChanges ? "border border-emerald-300/60 bg-emerald-500/30 text-emerald-100 hover:bg-emerald-500/40" : "bg-black/30 hover:bg-black/45"}`}>{hasChanges ? "✓" : "×"}</button>
+          <button type="button" onClick={onClose} aria-label={hasChanges ? "Hoàn tất chỉnh sửa" : "Đóng"} className={`absolute right-4 top-3 flex h-11 w-11 items-center justify-center rounded-full transition ${hasChanges ? "border border-emerald-300/60 bg-emerald-500/30 text-emerald-50 shadow-[0_0_0_3px_rgba(16,185,129,0.12)] hover:bg-emerald-500/40" : "bg-black/30 text-4xl font-light leading-none hover:bg-black/45"}`}>
+            {hasChanges ? <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden><path d="m5 12.5 4.25 4.25L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : "×"}
+          </button>
         </div>
 
         <div className="flex h-16 items-center justify-between border-b border-white/15 px-[18px]">
           {isCompanySchedule ? (
-            <div className="relative min-w-0">
+            <div ref={confirmersRef} className="relative min-w-0">
               <button type="button" onClick={() => setConfirmersOpen((open) => !open)} aria-expanded={confirmersOpen} className="flex min-w-0 items-center gap-2 text-sm font-bold">
                 <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 shrink-0 transition-transform ${confirmersOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 <span>Đã xác nhận</span>
@@ -180,7 +203,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
               <div className="flex items-center gap-3 whitespace-nowrap tabular-nums">
                 <TimePickerField value={slotToTimeInput(task.slotIndex)} label={slotLabel(task.slotIndex)} onChange={(value) => { const slot = timeInputToSlot(value); if (slot !== null) patchAndMarkChanged({ slotIndex: slot }); }} />
                 <span className="flex w-4 items-center justify-center leading-none">−</span>
-                <span>{slotLabel(task.slotIndex + task.span)}</span>
+                <TimePickerField value={slotToTimeInput(task.slotIndex + task.span)} label={slotLabel(task.slotIndex + task.span)} onChange={(value) => { const endSlot = timeInputToSlot(value); if (endSlot !== null) patchAndMarkChanged({ span: Math.max(1, endSlot - task.slotIndex) }); }} />
                 <span className="text-sm text-zinc-500">{task.span * 30} phút</span>
               </div>
             </div>
@@ -205,8 +228,8 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
         <div className="px-[18px] py-5">
           <div className="flex items-center gap-3 border-b border-white/15 pb-3">
             <SmallAvatar name={currentUser?.name ?? "Tôi"} avatar={currentUser?.avatar ?? null} />
-            <input className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập gì đó ..." />
-            <button type="button" aria-label="Gửi bình luận" className="text-3xl text-sky-400">➤</button>
+            <input value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập gì đó ..." />
+            <button type="button" onClick={submitComment} disabled={!commentDraft.trim()} aria-label="Gửi bình luận" className="text-3xl text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">➤</button>
           </div>
           <button type="button" onClick={() => setCommentsOpen((open) => !open)} aria-expanded={commentsOpen} className="mt-4 flex items-center gap-2 text-base font-bold">
             {commenters.length} comment
