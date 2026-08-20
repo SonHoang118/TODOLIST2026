@@ -124,6 +124,7 @@ function slotGradientTextColor(slot: number, isDark: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
+  const [currentTime, setCurrentTime]     = useState(() => new Date());
   const [viewMode, setViewMode] = useState<"SCHEDULE" | "TASK_LIST">("SCHEDULE");
   const [weekOffset, setWeekOffset]       = useState(0);
   const [draggingId, setDraggingId]       = useState<number | null>(null);
@@ -314,9 +315,25 @@ export default function SchedulePage() {
     }
   }, [dayWidth, infiniteScroll, isDark, isGradientTimeText]);
 
+  useLayoutEffect(() => {
+    const updateCurrentTime = () => setCurrentTime(new Date());
+
+    // Replace a possibly stale server-rendered timestamp before the first paint.
+    queueMicrotask(updateCurrentTime);
+    const interval = window.setInterval(updateCurrentTime, 30_000);
+    window.addEventListener("focus", updateCurrentTime);
+    document.addEventListener("visibilitychange", updateCurrentTime);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", updateCurrentTime);
+      document.removeEventListener("visibilitychange", updateCurrentTime);
+    };
+  }, []);
+
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
-  const today           = new Date();
+  const today           = currentTime;
   const todayAbsDay     = dateToAbsDay(today);
   const colCount        = infiniteScroll ? INF_BUFFER : DAYS;
   const viewStartAbsDay = infiniteScroll
@@ -326,7 +343,7 @@ export default function SchedulePage() {
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
   const bulkDeleteCutoffAbsDay = dateInputToAbsDay(bulkDeleteAfterDate);
   const shouldBulkDeleteTask = (task: Task, cutoffAbsDay: number) => isMultiDayTask(task)
-    ? (task.endAbsDay ?? task.absDay) > cutoffAbsDay
+    ? (task.endAbsDay ?? task.absDay) < cutoffAbsDay
     : task.absDay < cutoffAbsDay;
   const bulkDeleteTaskCount = bulkDeleteCutoffAbsDay === null ? 0 : tasks.filter((task) => shouldBulkDeleteTask(task, bulkDeleteCutoffAbsDay)).length;
   const multiDayTaskLanes = getMultiDayTaskLanes(tasks);
@@ -1165,9 +1182,8 @@ export default function SchedulePage() {
 
   // Week data — kept for week-mode header
   // (colDates / todayIdx are computed above, before the gesture refs)
-  const nowSlot   = today.getHours() * 2 + (today.getMinutes() >= 30 ? 1 : 0);
-  const nowFrac   = (today.getMinutes() % 30) / 30;
-  const nowTop    = nowSlot * effSlotH + nowFrac * effSlotH;
+  const nowMinutes = today.getHours() * 60 + today.getMinutes() + today.getSeconds() / 60;
+  const nowTop     = (nowMinutes / 30) * effSlotH;
 
   const draggingTask = tasks.find(t => t.id === draggingId);
   const isCompanySchedule = scheduleScope === "COMPANY";
@@ -1222,7 +1238,7 @@ export default function SchedulePage() {
 
     const cutoffLabel = absDayToDate(cutoffAbsDay).toLocaleDateString("vi-VN");
     const shouldDelete = window.confirm(
-      `Bạn có chắc muốn xóa ${tasksToDelete.length} task theo mốc ${cutoffLabel} không? Task một ngày trước mốc và task nhiều ngày kết thúc sau mốc sẽ bị xóa. Hành động này không thể hoàn tác.`,
+      `Bạn có chắc muốn xóa ${tasksToDelete.length} task trước ${cutoffLabel} không? Task nhiều ngày chỉ bị xóa khi ngày kết thúc trước mốc. Hành động này không thể hoàn tác.`,
     );
     if (!shouldDelete) return;
 
@@ -2334,7 +2350,7 @@ export default function SchedulePage() {
                 <div className="mt-2 min-w-0 overflow-hidden rounded-xl border border-rose-300/20 bg-rose-300/[0.04] px-3 py-3">
                   <p className="text-sm font-semibold text-rose-300">Xóa nhiều task</p>
                   <p className={`mt-1 text-[11px] leading-4 ${th.subtext}`}>
-                    Xóa task một ngày trước mốc; task nhiều ngày chỉ bị xóa khi ngày kết thúc sau mốc.
+                    Xóa task trước mốc; task nhiều ngày chỉ bị xóa khi ngày kết thúc trước mốc.
                   </p>
                   <label className="mt-3 block min-w-0 max-w-full overflow-hidden">
                     <span className={`text-[11px] ${th.subtext}`}>Mốc ngày để xóa task</span>
