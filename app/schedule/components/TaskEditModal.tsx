@@ -94,6 +94,11 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
+  const canAcceptTask = !isCompanySchedule
+    && task.status === "PENDING"
+    && Boolean(task.assignedFromName)
+    && currentUser !== null
+    && scheduleOwnerId === currentUser.id;
   const patchAndMarkChanged = (patch: Partial<Task>) => {
     if (isReadOnly) return;
     setHasChanges(true);
@@ -230,8 +235,8 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
               )}
             </div>
           ) : (
-            task.assignedFromName && task.status === "PENDING" ? (
-              <button type="button" onClick={() => { setHasChanges(true); onAccept(); }} className="rounded-md border border-amber-400/25 bg-amber-500/15 px-5 py-2 text-sm font-bold text-amber-400 transition hover:bg-amber-500/25">Nhận</button>
+            canAcceptTask ? (
+              <button type="button" onClick={() => { setHasChanges(true); onAccept(); }} className="rounded-md bg-amber-400 px-5 py-2 text-sm font-bold text-black transition hover:bg-amber-300">Nhận</button>
             ) : (
               <span className={`rounded-md px-5 py-2 text-sm font-semibold ${statusBadgeClass(task.status)}`}>
                 {task.status === "PENDING" ? "Đang chờ" : STATUS_LABEL[task.status]}

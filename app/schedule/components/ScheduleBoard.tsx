@@ -415,7 +415,7 @@ export default function SchedulePage() {
     }
 
     if (action === "accept") {
-      if (scheduleScopeRef.current === "COMPANY") return;
+      if (scheduleScopeRef.current === "COMPANY" || !isViewingOwnScheduleRef.current) return;
       fn.current.setTasks(prev => prev.map(t => t.id === taskId ? withTaskAudit({ ...t, status: "IN_PROGRESS" }, sessionUserRef.current) : t));
       fn.current.setBadge("Đã nhận task");
       return;
