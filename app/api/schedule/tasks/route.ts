@@ -2,7 +2,7 @@ import * as Ably from "ably";
 import { sql } from "../../../lib/database";
 import { queuePushNotification } from "../../../lib/push-notifications";
 import type { ScheduleScope, Task } from "../../../schedule/lib/types";
-import { isTaskOverdue, shouldAutoDeleteTask } from "../../../schedule/lib/domain/task";
+import { isTaskReadOnly, shouldAutoDeleteTask } from "../../../schedule/lib/domain/task";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,8 +139,8 @@ export async function PUT(request: Request) {
         ? await sql`SELECT id, data, version, updated_at FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${task.id} LIMIT 1` as StoredRow[]
         : [];
       const previous = previousRows[0] ? rowToTask(previousRows[0]) : null;
-      if (previous && isTaskOverdue(previous)) {
-        return Response.json({ error: "Task quá hạn chỉ có thể xem hoặc xóa." }, { status: 423 });
+      if (previous && isTaskReadOnly(previous)) {
+        return Response.json({ error: "Task đã khóa chỉ có thể xem hoặc xóa." }, { status: 423 });
       }
       const data = { ...task };
       delete data.version;

@@ -2,7 +2,7 @@
 
 import { absDayToDate, dayShortOf, slotLabel } from "../lib/date";
 import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
-import { isTaskOverdue } from "../lib/domain/task";
+import { isTaskOverdue, isTaskReadOnly } from "../lib/domain/task";
 import type { ScheduleTheme, Task } from "../lib/types";
 
 interface TodayTaskListProps {
@@ -50,6 +50,7 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
             {todayTasks.map((task, index) => {
               const isDone = task.status === "DONE";
               const isOverdue = isTaskOverdue(task);
+              const isReadOnly = isTaskReadOnly(task);
               const isMultiDay = isMultiDayTask(task);
               const time = isMultiDay
                 ? `${absDayToDate(task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(task.slotIndex)} → ${absDayToDate(task.endAbsDay ?? task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(getMultiDayEndSlot(task))}`
@@ -70,7 +71,7 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
-                      {!isOverdue && <button type="button" onClick={() => onEdit(task.id)} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>}
+                      {!isReadOnly && <button type="button" onClick={() => onEdit(task.id)} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>}
                       <button type="button" onClick={() => onRemove(task.id)} className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-500/20">Xóa</button>
                     </div>
                   </div>

@@ -15,6 +15,7 @@ interface TaskEditModalProps {
   scheduleScope: ScheduleScope;
   scheduleOwnerId: number | null;
   isOverdue: boolean;
+  isReadOnly: boolean;
   isDark: boolean;
   users: SessionUser[];
   currentUser: SessionUser | null;
@@ -59,7 +60,7 @@ function commentTimeLabel(createdAt: string) {
   return `${Math.floor(hours / 24)} ngày trước`;
 }
 
-export function TaskEditModal({ task, isCompanySchedule, scheduleScope, scheduleOwnerId, isOverdue, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
+export function TaskEditModal({ task, isCompanySchedule, scheduleScope, scheduleOwnerId, isOverdue, isReadOnly, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [confirmersOpen, setConfirmersOpen] = useState(false);
@@ -88,7 +89,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
   const patchAndMarkChanged = (patch: Partial<Task>) => {
-    if (isOverdue) return;
+    if (isReadOnly) return;
     setHasChanges(true);
     onPatch(patch);
   };
@@ -175,7 +176,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onClick={onClose}>
       <section className="relative max-h-[94vh] w-full max-w-[455px] overflow-y-auto rounded-xl bg-[#242424] text-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div ref={pickerRef} className="relative">
-          {isOverdue ? (
+          {isReadOnly ? (
             <div className="h-[68px] w-full rounded-t-xl" style={{ backgroundColor: taskColor }} />
           ) : (
             <button
@@ -236,13 +237,13 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
         <div className="border-b border-white/15 px-[18px] py-5">
           <div className="flex items-center gap-4">
             <LargeAvatar name={titleAvatarName} avatar={titleAvatar} />
-            <textarea readOnly={isOverdue} rows={1} value={title} onChange={(event) => { setTitle(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isOverdue) onPatch({ title }); }} className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base font-bold leading-snug outline-none [field-sizing:content]" placeholder="Tên công việc" />
-            {!isOverdue && <button type="button" onClick={() => { setTitle(""); patchAndMarkChanged({ title: "" }); }} aria-label="Xóa tiêu đề" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-sm text-zinc-300">×</button>}
+            <textarea readOnly={isReadOnly} rows={1} value={title} onChange={(event) => { setTitle(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isReadOnly) onPatch({ title }); }} className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base font-bold leading-snug outline-none [field-sizing:content]" placeholder="Tên công việc" />
+            {!isReadOnly && <button type="button" onClick={() => { setTitle(""); patchAndMarkChanged({ title: "" }); }} aria-label="Xóa tiêu đề" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-sm text-zinc-300">×</button>}
           </div>
-          <textarea readOnly={isOverdue} value={description} onChange={(event) => { setDescription(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isOverdue) onPatch({ description }); }} className="mt-3 h-[60px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 outline-none" placeholder="Nhập mô tả" />
+          <textarea readOnly={isReadOnly} value={description} onChange={(event) => { setDescription(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isReadOnly) onPatch({ description }); }} className="mt-3 h-[60px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 outline-none" placeholder="Nhập mô tả" />
         </div>
 
-        <div className={`border-b border-white/15 px-[18px] py-4 ${isOverdue ? "pointer-events-none opacity-75" : ""}`}>
+        <div className={`border-b border-white/15 px-[18px] py-4 ${isReadOnly ? "pointer-events-none opacity-75" : ""}`}>
           <div className="flex items-center gap-4 text-xl font-bold">
             <input
               id={`multi-day-task-${task.id}`}
@@ -285,7 +286,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
         </div>
 
         <div className="px-[18px] py-5">
-          {!isOverdue && <div className="flex items-center gap-3 border-b border-white/15 pb-3">
+          {!isReadOnly && <div className="flex items-center gap-3 border-b border-white/15 pb-3">
             <SmallAvatar name={currentUser?.name ?? "Tôi"} avatar={currentUser?.avatar ?? null} />
             <input maxLength={2000} value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập bình luận..." />
             <button type="button" onClick={() => void submitComment()} disabled={!commentDraft.trim() || !currentUser || commentSending} aria-label="Gửi bình luận" className="flex h-8 w-8 items-center justify-center text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">

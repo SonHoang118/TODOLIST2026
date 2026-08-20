@@ -17,6 +17,7 @@ import {
   ensureUniqueTaskIds,
   isHexColor,
   isTaskOverdue,
+  isTaskReadOnly,
   isTaskStatus,
   maxTaskId,
   normalizeTaskLabel,
@@ -383,7 +384,7 @@ export default function SchedulePage() {
   };
 
   const patchTask = (taskId: number, patch: Partial<Task>) => {
-    fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId && !isTaskOverdue(t) ? withTaskAudit({ ...t, ...patch }, sessionUserRef.current) : t)));
+    fn.current.setTasks((prev) => prev.map((t) => (t.id === taskId && !isTaskReadOnly(t) ? withTaskAudit({ ...t, ...patch }, sessionUserRef.current) : t)));
   };
 
   const applyTaskAction = (action: "edit" | "remove" | "accept" | "complete" | "confirm", taskId: number) => {
@@ -400,7 +401,7 @@ export default function SchedulePage() {
     }
 
     const targetTask = tasksRef.current.find((task) => task.id === taskId);
-    if (targetTask && isTaskOverdue(targetTask)) return false;
+    if (targetTask && isTaskReadOnly(targetTask)) return false;
 
     if (action === "edit") {
       const task = tasksRef.current.find(t => t.id === taskId);
@@ -598,7 +599,7 @@ export default function SchedulePage() {
         const id = gs.current.touchedTaskId;
         const task = tasksRef.current.find((item) => item.id === id);
         // Multi-day tasks are edited from their detail modal, not repositioned or resized by gesture.
-        if (task && isMultiDayTask(task) && !isTaskOverdue(task)) return;
+        if (task && isMultiDayTask(task) && !isTaskReadOnly(task)) return;
 
         gs.current.draggingTaskId = id;
         gs.current.timer = setTimeout(() => {
@@ -669,7 +670,7 @@ export default function SchedulePage() {
       // Long press + finger moves → start drag
       if (gs.current.longPressFired && !gs.current.isDragging && (adx > DRAG_DELTA || ady > DRAG_DELTA)) {
         const task = tasksRef.current.find((item) => item.id === gs.current.draggingTaskId);
-        if (task && isTaskOverdue(task)) return;
+        if (task && isTaskReadOnly(task)) return;
         gs.current.isDragging = true;
         fn.current.setDraggingId(gs.current.draggingTaskId!);
         fn.current.setDragPreview(screenToSlot(t.clientX, t.clientY));
@@ -803,7 +804,7 @@ export default function SchedulePage() {
         if (adx < DRAG_DELTA && ady < DRAG_DELTA) {
           fn.current.setResizingId(gs.current.draggingTaskId);
           const task = tasksRef.current.find((item) => item.id === gs.current.draggingTaskId);
-          fn.current.setBadge(task && isTaskOverdue(task) ? "Task quá hạn: chỉ có thể xóa" : "Kéo thanh để điều chỉnh thời lượng");
+          fn.current.setBadge(task && isTaskReadOnly(task) ? "Task đã khóa: chỉ có thể xóa" : "Kéo thanh để điều chỉnh thời lượng");
         }
         fn.current.setLongPressedId(null);
 
@@ -1428,11 +1429,12 @@ export default function SchedulePage() {
                   </div>
                 ) : multiDayBars.map(({ task, lane, left, width }) => {
                   const isOverdue = isTaskOverdue(task);
+                  const isReadOnly = isTaskReadOnly(task);
                   const isDone = !isCompanySchedule && task.status === "DONE";
                   const backgroundColor = isHexColor(task.color) ? task.color : undefined;
                   const backgroundClass = isDone ? doneTaskBgClass(isDark) : resolveTaskBgClass(task.color, isDark);
                   const canToggleDone = !isCompanySchedule
-                    && !isOverdue
+                    && !isReadOnly
                     && isViewingOwnSchedule
                     && task.status === "IN_PROGRESS";
                   return (
@@ -1547,6 +1549,7 @@ export default function SchedulePage() {
                 const isResizing     = resizingId    === task.id;
                 const isLongPressed  = longPressedId === task.id;
                 const isOverdue = isTaskOverdue(task);
+                const isReadOnly = isTaskReadOnly(task);
                 const isPending = !isCompanySchedule && task.status === "PENDING";
                 const isInProgress = !isCompanySchedule && task.status === "IN_PROGRESS";
                 const isDone = !isCompanySchedule && task.status === "DONE";
@@ -1674,7 +1677,7 @@ export default function SchedulePage() {
                       </div>
                     )}
 
-                    <div className={`flex items-start gap-1 ${!isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) ? checkboxOffsetClass : "pl-0"}`}>
+                    <div className={`flex items-start gap-1 ${!isOverdue && !isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) ? checkboxOffsetClass : "pl-0"}`}>
                       <p
                         className={`${titleTextClass} font-semibold flex-1 text-white ${isDone ? "line-through" : ""}`}
                         style={{
@@ -1782,7 +1785,7 @@ export default function SchedulePage() {
                     {/* Edit / Remove buttons in resize mode */}
                     {isResizing && (
                       <div className="absolute top-1 right-1 flex gap-1">
-                        {!isOverdue && <button
+                        {!isReadOnly && <button
                           data-action="edit" data-task-id={task.id}
                           className="w-5 h-5 rounded-full bg-white/25 text-white text-[9px] flex items-center justify-center"
                         >✏</button>}
@@ -1796,7 +1799,7 @@ export default function SchedulePage() {
                   </div>
 
                   {/* Resize handle (bottom bar) */}
-                  {isResizing && !isOverdue && (
+                  {isResizing && !isReadOnly && (
                     <div
                       data-resize-handle={task.id}
                       className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-black/50"
@@ -2173,6 +2176,7 @@ export default function SchedulePage() {
           <TaskEditModal
             task={task}
             isOverdue={isTaskOverdue(task)}
+            isReadOnly={isTaskReadOnly(task)}
             isCompanySchedule={isCompanySchedule}
             scheduleScope={scheduleScope}
             scheduleOwnerId={authUserId}

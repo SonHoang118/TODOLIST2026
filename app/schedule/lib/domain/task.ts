@@ -77,6 +77,10 @@ export function isTaskOverdue(task: Task, now = Date.now()): boolean {
     && now - updatedAt >= DAY_MS;
 }
 
+export function isTaskReadOnly(task: Task, now = Date.now()): boolean {
+  return task.status === "DONE" || isTaskOverdue(task, now);
+}
+
 export function shouldAutoDeleteTask(task: Task, now = Date.now()): boolean {
   if (!task.updatedAt) return false;
   const updatedAt = Date.parse(task.updatedAt);
