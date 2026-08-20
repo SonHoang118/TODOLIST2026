@@ -70,6 +70,10 @@ export function taskEndTime(task: Task): number {
 
 export function isTaskOverdue(task: Task, now = Date.now()): boolean {
   if (task.status === "DONE") return false;
+  return hasTaskPassedLockThreshold(task, now);
+}
+
+function hasTaskPassedLockThreshold(task: Task, now: number): boolean {
   if (!task.updatedAt) return false;
   const updatedAt = Date.parse(task.updatedAt);
   return Number.isFinite(updatedAt)
@@ -78,7 +82,7 @@ export function isTaskOverdue(task: Task, now = Date.now()): boolean {
 }
 
 export function isTaskReadOnly(task: Task, now = Date.now()): boolean {
-  return task.status === "DONE" || isTaskOverdue(task, now);
+  return hasTaskPassedLockThreshold(task, now);
 }
 
 export function shouldAutoDeleteTask(task: Task, now = Date.now()): boolean {

@@ -535,7 +535,9 @@ export default function SchedulePage() {
         const task = tasksRef.current.find((item) => item.id === taskId);
         const canToggleDone =
           isViewingOwnScheduleRef.current &&
-          task?.status === "IN_PROGRESS";
+          task !== undefined &&
+          !isTaskReadOnly(task) &&
+          (task.status === "IN_PROGRESS" || task.status === "DONE");
 
         if (canToggleDone) {
           const rect = taskElForHitSlop.getBoundingClientRect();
@@ -1436,7 +1438,7 @@ export default function SchedulePage() {
                   const canToggleDone = !isCompanySchedule
                     && !isReadOnly
                     && isViewingOwnSchedule
-                    && task.status === "IN_PROGRESS";
+                    && (task.status === "IN_PROGRESS" || task.status === "DONE");
                   const showMultiDayCommentCount = (task.commentCount ?? 0) > 0 && width >= 104;
                   return (
                     <div
@@ -1452,14 +1454,14 @@ export default function SchedulePage() {
                         {(canToggleDone || isDone) && (
                           <button
                             type="button"
-                            disabled={isDone}
+                            disabled={isReadOnly}
                             data-action="complete"
                             data-task-id={task.id}
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (!isDone) applyTaskAction("complete", task.id);
+                              if (!isReadOnly) applyTaskAction("complete", task.id);
                             }}
-                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "cursor-not-allowed border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-300 bg-emerald-400/30` : "border-white/85 bg-black/25"}`}
                             title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                             aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                           >
@@ -1669,11 +1671,11 @@ export default function SchedulePage() {
                     {!isOverdue && !isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) && (
                       <button
                         type="button"
-                        disabled={isDone}
+                        disabled={isReadOnly}
                         data-action="complete"
                         data-task-id={task.id}
-                        onClick={() => { if (!isDone) applyTaskAction("complete", task.id); }}
-                        className={`absolute top-1 left-1 ${checkboxSizeClass} shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "cursor-not-allowed border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        onClick={() => { if (!isReadOnly) applyTaskAction("complete", task.id); }}
+                        className={`absolute top-1 left-1 ${checkboxSizeClass} shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-300 bg-emerald-400/30` : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
