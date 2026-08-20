@@ -1437,6 +1437,7 @@ export default function SchedulePage() {
                     && !isReadOnly
                     && isViewingOwnSchedule
                     && task.status === "IN_PROGRESS";
+                  const showMultiDayCommentCount = (task.commentCount ?? 0) > 0 && width >= 104;
                   return (
                     <div
                       key={task.id}
@@ -1473,6 +1474,14 @@ export default function SchedulePage() {
                         >
                           <span className={`block truncate ${isDone ? "line-through" : ""}`}>{task.title}</span>
                         </button>
+                        {showMultiDayCommentCount && (
+                          <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 rounded-full border border-white/25 bg-black/20 px-1.5 py-0.5 text-[8px] leading-none text-white/85" aria-label={`${task.commentCount} bình luận`}>
+                            <span className="font-semibold tabular-nums">{task.commentCount}</span>
+                            <svg viewBox="0 0 20 20" fill="none" className="h-2.5 w-2.5" aria-hidden>
+                              <path d="M16.5 9.5a6.5 6.5 0 0 1-7 6.48 7.5 7.5 0 0 1-2.65-.7L3 16.5l1.2-3.25A6.5 6.5 0 1 1 16.5 9.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </span>
+                        )}
                         {isOverdue && <span className={`absolute bottom-0 left-0 right-0 text-center text-[8px] leading-[10px] ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "ĐÃ HẾT HẠN" : "QUÁ HẠN"}</span>}
                       </div>
                     </div>
