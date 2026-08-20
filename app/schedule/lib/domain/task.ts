@@ -69,6 +69,7 @@ export function taskEndTime(task: Task): number {
 }
 
 export function isTaskOverdue(task: Task, now = Date.now()): boolean {
+  if (task.status === "DONE") return false;
   if (!task.updatedAt) return false;
   const updatedAt = Date.parse(task.updatedAt);
   return Number.isFinite(updatedAt)

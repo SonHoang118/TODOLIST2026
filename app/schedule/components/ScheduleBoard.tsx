@@ -534,7 +534,7 @@ export default function SchedulePage() {
         const task = tasksRef.current.find((item) => item.id === taskId);
         const canToggleDone =
           isViewingOwnScheduleRef.current &&
-          (task?.status === "IN_PROGRESS" || task?.status === "DONE");
+          task?.status === "IN_PROGRESS";
 
         if (canToggleDone) {
           const rect = taskElForHitSlop.getBoundingClientRect();
@@ -1434,7 +1434,7 @@ export default function SchedulePage() {
                   const canToggleDone = !isCompanySchedule
                     && !isOverdue
                     && isViewingOwnSchedule
-                    && (task.status === "IN_PROGRESS" || task.status === "DONE");
+                    && task.status === "IN_PROGRESS";
                   return (
                     <div
                       key={task.id}
@@ -1446,16 +1446,17 @@ export default function SchedulePage() {
                         className="sticky z-10 inline-flex h-full w-max max-w-full min-w-0 items-center px-1"
                         style={{ left: TIME_W }}
                       >
-                        {canToggleDone && (
+                        {(canToggleDone || isDone) && (
                           <button
                             type="button"
+                            disabled={isDone}
                             data-action="complete"
                             data-task-id={task.id}
                             onClick={(event) => {
                               event.stopPropagation();
-                              applyTaskAction("complete", task.id);
+                              if (!isDone) applyTaskAction("complete", task.id);
                             }}
-                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                            className={`mr-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${isDone ? "cursor-not-allowed border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                             title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                             aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                           >
@@ -1648,10 +1649,11 @@ export default function SchedulePage() {
                     {!isOverdue && !isCompanySchedule && isViewingOwnSchedule && (isInProgress || isDone) && (
                       <button
                         type="button"
+                        disabled={isDone}
                         data-action="complete"
                         data-task-id={task.id}
-                        onClick={() => applyTaskAction("complete", task.id)}
-                        className={`absolute top-1 left-1 ${checkboxSizeClass} shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
+                        onClick={() => { if (!isDone) applyTaskAction("complete", task.id); }}
+                        className={`absolute top-1 left-1 ${checkboxSizeClass} shrink-0 rounded-md border flex items-center justify-center z-10 ${isDone ? "cursor-not-allowed border-emerald-300 bg-emerald-400/30" : "border-white/85 bg-black/25"}`}
                         title={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                         aria-label={isDone ? "Bỏ hoàn thành" : "Đánh dấu hoàn thành"}
                       >
