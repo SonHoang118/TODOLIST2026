@@ -2172,6 +2172,8 @@ export default function SchedulePage() {
             task={task}
             isOverdue={isTaskOverdue(task)}
             isCompanySchedule={isCompanySchedule}
+            scheduleScope={scheduleScope}
+            scheduleOwnerId={authUserId}
             isDark={isDark}
             users={usersForAuth}
             currentUser={sessionUser}

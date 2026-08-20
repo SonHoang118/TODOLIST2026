@@ -33,6 +33,16 @@ export interface SessionUser {
   avatar: string;
 }
 
+export interface TaskComment {
+  id: number;
+  taskId: number;
+  authorUserId: number;
+  authorName: string;
+  authorAvatar: string;
+  content: string;
+  createdAt: string;
+}
+
 export type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 export type TaskLabelValue = "DEFAULT" | "PERSONAL";
 export type ScheduleScope = "USER" | "COMPANY";

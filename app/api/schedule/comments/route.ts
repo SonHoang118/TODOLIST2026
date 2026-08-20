@@ -1,0 +1,89 @@
+import { sql } from "../../../lib/database";
+import type { ScheduleScope, TaskComment } from "../../../schedule/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type CommentRow = {
+  id: string | number;
+  task_id: string | number;
+  author_user_id: string | number;
+  author_name: string;
+  author_avatar: string;
+  content: string;
+  created_at: string | Date;
+};
+
+function parseContext(value: { scope?: unknown; ownerId?: unknown }) {
+  if (value.scope === "COMPANY") return { scopeKey: "COMPANY" };
+  const ownerId = Number(value.ownerId);
+  if (value.scope === "USER" && Number.isSafeInteger(ownerId) && ownerId > 0) return { scopeKey: `USER:${ownerId}` };
+  return null;
+}
+
+async function ensureTables() {
+  await sql`CREATE TABLE IF NOT EXISTS schedule_task_entries (
+    scope_key TEXT NOT NULL, id BIGINT NOT NULL, data JSONB NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (scope_key, id)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS schedule_task_comments (
+    id BIGSERIAL PRIMARY KEY,
+    scope_key TEXT NOT NULL,
+    task_id BIGINT NOT NULL,
+    author_user_id BIGINT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_avatar TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL CHECK (char_length(content) BETWEEN 1 AND 2000),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (scope_key, task_id) REFERENCES schedule_task_entries(scope_key, id) ON DELETE CASCADE
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS schedule_task_comments_task_idx ON schedule_task_comments(scope_key, task_id, created_at DESC)`;
+}
+
+function toComment(row: CommentRow): TaskComment {
+  return {
+    id: Number(row.id),
+    taskId: Number(row.task_id),
+    authorUserId: Number(row.author_user_id),
+    authorName: row.author_name,
+    authorAvatar: row.author_avatar,
+    content: row.content,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const taskId = Number(params.get("taskId"));
+  const context = parseContext({ scope: params.get("scope") as ScheduleScope | null, ownerId: params.get("ownerId") });
+  if (!context || !Number.isSafeInteger(taskId) || taskId < 1) return Response.json({ error: "Invalid comment context." }, { status: 400 });
+  await ensureTables();
+  const rows = await sql`SELECT id, task_id, author_user_id, author_name, author_avatar, content, created_at
+    FROM schedule_task_comments WHERE scope_key = ${context.scopeKey} AND task_id = ${taskId}
+    ORDER BY created_at DESC, id DESC` as CommentRow[];
+  return Response.json(rows.map(toComment), { headers: { "Cache-Control": "no-store" } });
+}
+
+export async function POST(request: Request) {
+  let body: { scope?: ScheduleScope; ownerId?: number | null; taskId?: number; authorUserId?: number; content?: string };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+  const context = parseContext(body);
+  const content = body.content?.trim() ?? "";
+  if (!context || !Number.isSafeInteger(body.taskId) || body.taskId! < 1 || !Number.isSafeInteger(body.authorUserId) || body.authorUserId! < 1 || !content || content.length > 2000) {
+    return Response.json({ error: "Invalid comment payload." }, { status: 400 });
+  }
+  await ensureTables();
+  const users = await sql`SELECT name, avatar FROM schedule_users WHERE id = ${body.authorUserId} LIMIT 1` as Array<{ name: string; avatar: string }>;
+  if (!users[0]) return Response.json({ error: "User not found." }, { status: 404 });
+  const tasks = await sql`SELECT id FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${body.taskId} LIMIT 1` as Array<{ id: string | number }>;
+  if (!tasks[0]) return Response.json({ error: "Task not found." }, { status: 404 });
+  const rows = await sql`INSERT INTO schedule_task_comments (scope_key, task_id, author_user_id, author_name, author_avatar, content)
+    VALUES (${context.scopeKey}, ${body.taskId}, ${body.authorUserId}, ${users[0].name}, ${users[0].avatar}, ${content})
+    RETURNING id, task_id, author_user_id, author_name, author_avatar, content, created_at` as CommentRow[];
+  return Response.json(toComment(rows[0]!), { status: 201 });
+}

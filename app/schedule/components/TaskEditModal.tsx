@@ -6,12 +6,14 @@ import { SLOTS, STATUS_LABEL } from "../lib/constants";
 import { absDayToDate, absDayToDateInput, dateInputToAbsDay, dayShortOf } from "../lib/date";
 import { colorToDisplayHex } from "../lib/domain/task";
 import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
-import type { SessionUser, Task } from "../lib/types";
+import type { ScheduleScope, SessionUser, Task, TaskComment } from "../lib/types";
 import { HalfHourTimePicker } from "./HalfHourTimePicker";
 
 interface TaskEditModalProps {
   task: Task;
   isCompanySchedule: boolean;
+  scheduleScope: ScheduleScope;
+  scheduleOwnerId: number | null;
   isOverdue: boolean;
   isDark: boolean;
   users: SessionUser[];
@@ -47,7 +49,17 @@ function SmallAvatar({ name, avatar }: { name: string | null; avatar: string | n
   return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-xs font-bold text-white">{name?.trim().charAt(0).toUpperCase() || "?"}</span>;
 }
 
-export function TaskEditModal({ task, isCompanySchedule, isOverdue, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
+function commentTimeLabel(createdAt: string) {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000));
+  if (elapsedSeconds < 60) return "Vừa xong";
+  const minutes = Math.floor(elapsedSeconds / 60);
+  if (minutes < 60) return `${minutes} phút trước`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  return `${Math.floor(hours / 24)} ngày trước`;
+}
+
+export function TaskEditModal({ task, isCompanySchedule, scheduleScope, scheduleOwnerId, isOverdue, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [confirmersOpen, setConfirmersOpen] = useState(false);
@@ -65,15 +77,11 @@ export function TaskEditModal({ task, isCompanySchedule, isOverdue, isDark, user
   const ownerAvatar = task.createdByAvatar ?? currentUser?.avatar ?? null;
   const titleAvatarName = isCompanySchedule ? (task.updatedByName ?? ownerName) : ownerName;
   const titleAvatar = isCompanySchedule ? (task.updatedByAvatar ?? ownerAvatar) : ownerAvatar;
-  const [commenters, setCommenters] = useState(() => [
-    { name: ownerName, avatar: ownerAvatar, time: "5 phút trước", text: "À! chiều nhớ cầm thêm bản sau khi chỉnh sửa đi nhé mọi người." },
-    { name: "Tôi", avatar: currentUser?.avatar ?? null, time: "20 phút trước", text: "Có cần cầm thêm gì không ạ ?" },
-    { name: "Nguyễn Minh Anh", avatar: null, time: "32 phút trước", text: "Mình đã kiểm tra lại hồ sơ, phần thông tin khách hàng đã đầy đủ rồi nhé." },
-    { name: "Trần Hoàng", avatar: null, time: "45 phút trước", text: "Mọi người nhớ mang theo bản gốc để đối chiếu." },
-    { name: ownerName, avatar: ownerAvatar, time: "1 giờ trước", text: "Mình sẽ đến sớm khoảng 10 phút để chuẩn bị." },
-    { name: "Tôi", avatar: currentUser?.avatar ?? null, time: "2 giờ trước", text: "Vâng ạ, em đã ghi chú lại rồi." },
-  ]);
+  const [commenters, setCommenters] = useState<TaskComment[]>([]);
   const [commentDraft, setCommentDraft] = useState("");
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [commentSending, setCommentSending] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
@@ -82,16 +90,47 @@ export function TaskEditModal({ task, isCompanySchedule, isOverdue, isDark, user
     setHasChanges(true);
     onPatch(patch);
   };
-  const submitComment = () => {
+  const submitComment = async () => {
     const text = commentDraft.trim();
-    if (!text) return;
-    setCommenters((current) => [
-      { name: currentUser?.name ?? "Tôi", avatar: currentUser?.avatar ?? null, time: "Vừa xong", text },
-      ...current,
-    ]);
-    setCommentDraft("");
-    setCommentsOpen(true);
+    if (!text || !currentUser || commentSending) return;
+    setCommentSending(true);
+    setCommentError(null);
+    try {
+      const response = await fetch("/api/schedule/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: scheduleScope, ownerId: scheduleOwnerId, taskId: task.id, authorUserId: currentUser.id, content: text }),
+      });
+      if (!response.ok) throw new Error("Không thể gửi bình luận.");
+      const savedComment = await response.json() as TaskComment;
+      setCommenters((current) => [savedComment, ...current]);
+      setCommentDraft("");
+      setCommentsOpen(true);
+    } catch (error) {
+      setCommentError(error instanceof Error ? error.message : "Không thể gửi bình luận.");
+    } finally {
+      setCommentSending(false);
+    }
   };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ scope: scheduleScope, taskId: String(task.id) });
+    if (scheduleScope === "USER" && scheduleOwnerId !== null) params.set("ownerId", String(scheduleOwnerId));
+    void fetch(`/api/schedule/comments?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Không thể tải bình luận.");
+        setCommenters(await response.json() as TaskComment[]);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCommentsLoading(false);
+      });
+    return () => controller.abort();
+  }, [scheduleOwnerId, scheduleScope, task.id]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -224,28 +263,31 @@ export function TaskEditModal({ task, isCompanySchedule, isOverdue, isDark, user
           )}
         </div>
 
-        {!isOverdue && <div className="px-[18px] py-5">
-          <div className="flex items-center gap-3 border-b border-white/15 pb-3">
+        <div className="px-[18px] py-5">
+          {!isOverdue && <div className="flex items-center gap-3 border-b border-white/15 pb-3">
             <SmallAvatar name={currentUser?.name ?? "Tôi"} avatar={currentUser?.avatar ?? null} />
-            <input value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập gì đó ..." />
-            <button type="button" onClick={submitComment} disabled={!commentDraft.trim()} aria-label="Gửi bình luận" className="text-3xl text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">➤</button>
-          </div>
+            <input maxLength={2000} value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập bình luận..." />
+            <button type="button" onClick={() => void submitComment()} disabled={!commentDraft.trim() || !currentUser || commentSending} aria-label="Gửi bình luận" className="text-3xl text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">{commentSending ? "…" : "➤"}</button>
+          </div>}
+          {commentError && <p className="mt-2 text-xs text-red-400">{commentError}</p>}
           <button type="button" onClick={() => setCommentsOpen((open) => !open)} aria-expanded={commentsOpen} className="mt-4 flex items-center gap-2 text-base font-bold">
             {commenters.length} comment
             <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 transition-transform ${commentsOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
           {commentsOpen && <div className="mt-4 max-h-[220px] space-y-7 overflow-y-auto pr-2">
+            {commentsLoading && <p className="text-sm text-zinc-500">Đang tải bình luận...</p>}
+            {!commentsLoading && commenters.length === 0 && <p className="text-sm text-zinc-500">Chưa có bình luận.</p>}
             {commenters.map((comment) => (
-              <div key={`${comment.name}-${comment.time}`} className="flex gap-3">
-                <SmallAvatar name={comment.name} avatar={comment.avatar} />
+              <div key={comment.id} className="flex gap-3">
+                <SmallAvatar name={comment.authorName} avatar={comment.authorAvatar} />
                 <div className="min-w-0 text-sm leading-snug">
-                  <p><span className="font-bold">{comment.name}</span> <span className="ml-1 text-zinc-500">{comment.time}</span></p>
-                  <p className="mt-1 text-zinc-100">{comment.text}</p>
+                  <p><span className="font-bold">{comment.authorUserId === currentUser?.id ? "Tôi" : comment.authorName}</span> <span className="ml-1 text-zinc-500">{commentTimeLabel(comment.createdAt)}</span></p>
+                  <p className="mt-1 whitespace-pre-wrap break-words text-zinc-100">{comment.content}</p>
                 </div>
               </div>
             ))}
           </div>}
-        </div>}
+        </div>
       </section>
     </div>
   );

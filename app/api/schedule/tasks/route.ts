@@ -26,6 +26,13 @@ async function ensureTable(): Promise<void> {
     task_scope TEXT, task_owner_user_id BIGINT,
     is_read BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS schedule_task_comments (
+    id BIGSERIAL PRIMARY KEY, scope_key TEXT NOT NULL, task_id BIGINT NOT NULL,
+    author_user_id BIGINT NOT NULL, author_name TEXT NOT NULL, author_avatar TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL CHECK (char_length(content) BETWEEN 1 AND 2000), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (scope_key, task_id) REFERENCES schedule_task_entries(scope_key, id) ON DELETE CASCADE
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS schedule_task_comments_task_idx ON schedule_task_comments(scope_key, task_id, created_at DESC)`;
   await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_scope TEXT`;
   await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_owner_user_id BIGINT`;
 }
