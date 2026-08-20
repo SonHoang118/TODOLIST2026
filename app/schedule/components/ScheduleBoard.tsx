@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { HexColorPicker } from "react-colorful";
 import {
   COLORS, DAY_W, DAY_W_MAX, DAY_W_MIN, DAY_W_STEP, DAYS, DEFAULT_TASK_BG,
   DEFAULT_TASK_LABEL, DRAG_DELTA, HANDLE_H, HEADER_H, INF_BUFFER, INF_CENTER,
@@ -129,6 +130,8 @@ export default function SchedulePage() {
   const [dayWidth, setDayWidth]           = useState(DAY_W);
   const [isDark, setIsDark]               = useState(true);
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
+  const [todayColumnColor, setTodayColumnColor] = useState("#2E1065");
+  const [todayColorPickerOpen, setTodayColorPickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null; requiresLoad: boolean } | null>(null);
@@ -163,6 +166,7 @@ export default function SchedulePage() {
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const todayColorPickerRef                 = useRef<HTMLDivElement>(null);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -223,14 +227,25 @@ export default function SchedulePage() {
     stickyBg:    isDark ? "bg-zinc-950"               : "bg-gray-50",
     halfBorder:  isDark ? "border-zinc-900"           : "border-gray-100",
     dayBorder:   isDark ? "border-zinc-800/60"        : "border-gray-200/80",
-    todayCol:    isDark ? "bg-violet-950/15"          : "bg-violet-50/30",
-    todayHdr:    isDark ? "bg-violet-900/20"          : "bg-violet-100/40",
+    todayCol:    "",
+    todayHdr:    "",
     timeText:    isDark ? "text-zinc-600"             : "text-gray-400",
     subtext:     isDark ? "text-zinc-500"             : "text-gray-500",
     inputBg:     isDark ? "bg-zinc-700"               : "bg-gray-100",
     modalBg:     isDark ? "bg-zinc-800"               : "bg-white",
     btnSecondary:isDark ? "bg-zinc-700 text-zinc-300" : "bg-gray-100 text-gray-600",
   };
+  const todayColumnStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 15 : 30}%, transparent)` };
+  const todayHeaderStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 20 : 40}%, transparent)` };
+
+  useEffect(() => {
+    if (!todayColorPickerOpen) return;
+    const closePicker = (event: PointerEvent) => {
+      if (!todayColorPickerRef.current?.contains(event.target as Node)) setTodayColorPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", closePicker);
+    return () => document.removeEventListener("pointerdown", closePicker);
+  }, [todayColorPickerOpen]);
 
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
@@ -1359,8 +1374,8 @@ export default function SchedulePage() {
               return (
                 <div
                   key={i}
-                  style={{ width: dayWidth }}
-                  className={`flex flex-col items-center justify-center border-l ${th.border} shrink-0 ${isToday ? th.todayHdr : ""}`}
+                  style={{ width: dayWidth, ...(isToday ? todayHeaderStyle : {}) }}
+                  className={`flex flex-col items-center justify-center border-l ${th.border} shrink-0`}
                 >
                   <span className={`text-[10px] font-medium uppercase ${isToday ? "text-violet-400" : "text-zinc-500"}`}>
                     {dayShortOf(date)}
@@ -1393,7 +1408,7 @@ export default function SchedulePage() {
               </div>
               <div className="relative" style={{ width: colCount * dayWidth }}>
                 {Array.from({ length: colCount }, (_, day) => (
-                  <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`} style={{ left: day * dayWidth, width: dayWidth }} />
+                  <div key={day} className={`absolute inset-y-0 border-l ${gridDayBorderClass}`} style={{ left: day * dayWidth, width: dayWidth, ...(day === todayIdx ? todayColumnStyle : {}) }} />
                 ))}
                 {isMultiDayLaneExpanded && hasMultiDayEdgeIndicators && horizontalViewport.width > TIME_W && (
                   <div
@@ -1533,8 +1548,8 @@ export default function SchedulePage() {
                       key={day}
                       data-day={day}
                       data-slot={slot}
-                      style={{ width: dayWidth }}
-                      className={`shrink-0 border-l ${gridDayBorderClass} ${day === todayIdx ? th.todayCol : ""}`}
+                      style={{ width: dayWidth, ...(day === todayIdx ? todayColumnStyle : {}) }}
+                      className={`shrink-0 border-l ${gridDayBorderClass}`}
                     />
                   ))}
                 </div>
@@ -2150,6 +2165,30 @@ export default function SchedulePage() {
                 >
                   <span className={`absolute left-0.5 top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-200 ${isGradientTimeText ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
+              </div>
+
+              <div ref={todayColorPickerRef} className={`relative flex items-center justify-between py-4 border-b ${th.border}`}>
+                <div>
+                  <p className="text-sm font-medium">Màu cột hôm nay</p>
+                  <p className={`text-xs ${th.subtext} mt-0.5 font-mono uppercase`}>{todayColumnColor}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTodayColorPickerOpen((open) => !open)}
+                  className="h-8 w-8 rounded-lg border border-white/20 shadow-sm transition-transform hover:scale-105"
+                  style={{ backgroundColor: todayColumnColor }}
+                  aria-label="Chọn màu cột hôm nay"
+                  aria-expanded={todayColorPickerOpen}
+                />
+                {todayColorPickerOpen && (
+                  <div className={`absolute right-0 top-[58px] z-30 rounded-xl p-3 shadow-2xl ring-1 ring-black/10 ${th.modalBg}`}>
+                    <HexColorPicker color={todayColumnColor} onChange={setTodayColumnColor} />
+                    <div className={`mt-2 flex items-center justify-between gap-4 text-xs ${th.subtext}`}>
+                      <span>Màu cột hôm nay</span>
+                      <span className="font-mono uppercase">{todayColumnColor}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Infinite horizontal scroll toggle */}
