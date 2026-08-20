@@ -2,11 +2,12 @@ import * as Ably from "ably";
 import { sql } from "../../../lib/database";
 import { queuePushNotification } from "../../../lib/push-notifications";
 import type { ScheduleScope, Task } from "../../../schedule/lib/types";
+import { isTaskOverdue, shouldAutoDeleteTask } from "../../../schedule/lib/domain/task";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type StoredRow = { id: string | number; data: Task | string; version: number };
+type StoredRow = { id: string | number; data: Task | string; version: number; updated_at: string | Date };
 type TaskContext = { scope?: ScheduleScope; ownerId?: number | null };
 type MutationBody = TaskContext & { changes?: Task[]; deletedIds?: number[] };
 
@@ -39,7 +40,7 @@ function parseContext(value: TaskContext): { scope: ScheduleScope; ownerId: numb
 
 function rowToTask(row: StoredRow): Task {
   const data = typeof row.data === "string" ? (JSON.parse(row.data) as Task) : row.data;
-  return { ...data, id: Number(row.id), version: Number(row.version) };
+  return { ...data, id: Number(row.id), version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() };
 }
 
 function isTask(value: unknown): value is Task {
@@ -100,8 +101,12 @@ export async function GET(request: Request) {
   const context = parseContext({ scope: params.get("scope") as ScheduleScope | null ?? undefined, ownerId: params.has("ownerId") ? Number(params.get("ownerId")) : null });
   if (!context) return Response.json({ error: "A valid schedule scope is required." }, { status: 400 });
   await ensureTable();
-  const rows = (await sql`SELECT id, data, version FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} ORDER BY id`) as StoredRow[];
-  return Response.json(rows.map(rowToTask), { headers: { "Cache-Control": "no-store" } });
+  const rows = (await sql`SELECT id, data, version, updated_at FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} ORDER BY id`) as StoredRow[];
+  const tasks = rows.map(rowToTask);
+  const deletedIds = tasks.filter((task) => shouldAutoDeleteTask(task)).map((task) => task.id);
+  for (const id of deletedIds) await sql`DELETE FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${id}`;
+  if (deletedIds.length > 0) await publish(context, [], deletedIds);
+  return Response.json(tasks.filter((task) => !deletedIds.includes(task.id)), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {
@@ -124,18 +129,22 @@ export async function PUT(request: Request) {
     for (const task of changes) {
       const previousVersion = task.version ?? 0;
       const previousRows = previousVersion > 0
-        ? await sql`SELECT id, data, version FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${task.id} LIMIT 1` as StoredRow[]
+        ? await sql`SELECT id, data, version, updated_at FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${task.id} LIMIT 1` as StoredRow[]
         : [];
       const previous = previousRows[0] ? rowToTask(previousRows[0]) : null;
+      if (previous && isTaskOverdue(previous)) {
+        return Response.json({ error: "Task quá hạn chỉ có thể xem hoặc xóa." }, { status: 423 });
+      }
       const data = { ...task };
       delete data.version;
+      delete data.updatedAt;
       if (previousVersion === 0) {
-        const rows = (await sql`INSERT INTO schedule_task_entries (scope_key, id, data) VALUES (${context.scopeKey}, ${task.id}, ${JSON.stringify(data)}::jsonb) RETURNING id, data, version`) as StoredRow[];
+        const rows = (await sql`INSERT INTO schedule_task_entries (scope_key, id, data) VALUES (${context.scopeKey}, ${task.id}, ${JSON.stringify(data)}::jsonb) RETURNING id, data, version, updated_at`) as StoredRow[];
         const savedTask = rowToTask(rows[0]!);
         saved.push(savedTask);
         await createNotifications(context, savedTask, previous);
       } else {
-        const rows = (await sql`UPDATE schedule_task_entries SET data = ${JSON.stringify(data)}::jsonb, version = version + 1, updated_at = NOW() WHERE scope_key = ${context.scopeKey} AND id = ${task.id} AND version = ${previousVersion} RETURNING id, data, version`) as StoredRow[];
+        const rows = (await sql`UPDATE schedule_task_entries SET data = ${JSON.stringify(data)}::jsonb, version = version + 1, updated_at = NOW() WHERE scope_key = ${context.scopeKey} AND id = ${task.id} AND version = ${previousVersion} RETURNING id, data, version, updated_at`) as StoredRow[];
         if (rows.length === 0) return Response.json({ error: "Task was changed by another user." }, { status: 409 });
         const savedTask = rowToTask(rows[0]!);
         saved.push(savedTask);

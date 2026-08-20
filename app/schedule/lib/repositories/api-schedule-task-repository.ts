@@ -11,6 +11,7 @@ type MutationResponse = { tasks: Task[]; deletedIds: number[] };
 function taskSignature(task: Task): string {
   const content = { ...task };
   delete content.version;
+  delete content.updatedAt;
   return JSON.stringify(content);
 }
 

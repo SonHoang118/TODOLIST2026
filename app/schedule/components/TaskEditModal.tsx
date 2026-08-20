@@ -12,6 +12,7 @@ import { HalfHourTimePicker } from "./HalfHourTimePicker";
 interface TaskEditModalProps {
   task: Task;
   isCompanySchedule: boolean;
+  isOverdue: boolean;
   isDark: boolean;
   users: SessionUser[];
   currentUser: SessionUser | null;
@@ -46,7 +47,7 @@ function SmallAvatar({ name, avatar }: { name: string | null; avatar: string | n
   return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-xs font-bold text-white">{name?.trim().charAt(0).toUpperCase() || "?"}</span>;
 }
 
-export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
+export function TaskEditModal({ task, isCompanySchedule, isOverdue, isDark, users, currentUser, onClose, onDelete, onAccept, onPatch }: TaskEditModalProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [confirmersOpen, setConfirmersOpen] = useState(false);
@@ -77,6 +78,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
   const patchAndMarkChanged = (patch: Partial<Task>) => {
+    if (isOverdue) return;
     setHasChanges(true);
     onPatch(patch);
   };
@@ -113,13 +115,17 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onClick={onClose}>
       <section className="relative max-h-[94vh] w-full max-w-[455px] overflow-y-auto rounded-xl bg-[#242424] text-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div ref={pickerRef} className="relative">
-          <button
-            type="button"
-            className="block h-[68px] w-full rounded-t-xl transition-[filter] hover:brightness-110"
-            style={{ backgroundColor: taskColor }}
-            onClick={() => setPickerOpen((open) => !open)}
-            aria-label="Đổi màu công việc"
-          />
+          {isOverdue ? (
+            <div className="h-[68px] w-full rounded-t-xl" style={{ backgroundColor: taskColor }} />
+          ) : (
+            <button
+              type="button"
+              className="block h-[68px] w-full rounded-t-xl transition-[filter] hover:brightness-110"
+              style={{ backgroundColor: taskColor }}
+              onClick={() => setPickerOpen((open) => !open)}
+              aria-label="Đổi màu công việc"
+            />
+          )}
           {pickerOpen && (
             <div className="absolute left-5 top-14 z-20 rounded-xl bg-zinc-900 p-3 shadow-2xl ring-1 ring-white/15">
               <HexColorPicker color={taskColor} onChange={(color) => patchAndMarkChanged({ color })} />
@@ -134,7 +140,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
         </div>
 
         <div className="flex h-16 items-center justify-between border-b border-white/15 px-[18px]">
-          {isCompanySchedule ? (
+          {isOverdue ? <span className={`rounded-md px-4 py-2 text-sm font-bold ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "Đã hết hạn" : "Quá hạn"}</span> : isCompanySchedule ? (
             <div ref={confirmersRef} className="relative min-w-0">
               <button type="button" onClick={() => setConfirmersOpen((open) => !open)} aria-expanded={confirmersOpen} className="flex min-w-0 items-center gap-2 text-sm font-bold">
                 <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 shrink-0 transition-transform ${confirmersOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -170,24 +176,25 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
         <div className="border-b border-white/15 px-[18px] py-5">
           <div className="flex items-center gap-4">
             <LargeAvatar name={titleAvatarName} avatar={titleAvatar} />
-            <textarea rows={1} value={title} onChange={(event) => { setTitle(event.target.value); setHasChanges(true); }} onBlur={() => onPatch({ title })} className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base font-bold leading-snug outline-none [field-sizing:content]" placeholder="Tên công việc" />
-            <button type="button" onClick={() => { setTitle(""); patchAndMarkChanged({ title: "" }); }} aria-label="Xóa tiêu đề" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-sm text-zinc-300">×</button>
+            <textarea readOnly={isOverdue} rows={1} value={title} onChange={(event) => { setTitle(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isOverdue) onPatch({ title }); }} className="min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base font-bold leading-snug outline-none [field-sizing:content]" placeholder="Tên công việc" />
+            {!isOverdue && <button type="button" onClick={() => { setTitle(""); patchAndMarkChanged({ title: "" }); }} aria-label="Xóa tiêu đề" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-600 text-sm text-zinc-300">×</button>}
           </div>
-          <textarea value={description} onChange={(event) => { setDescription(event.target.value); setHasChanges(true); }} onBlur={() => onPatch({ description })} className="mt-3 h-[60px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 outline-none" placeholder="Nhập mô tả" />
+          <textarea readOnly={isOverdue} value={description} onChange={(event) => { setDescription(event.target.value); setHasChanges(true); }} onBlur={() => { if (!isOverdue) onPatch({ description }); }} className="mt-3 h-[60px] w-full resize-none overflow-y-auto bg-transparent text-sm leading-5 outline-none" placeholder="Nhập mô tả" />
         </div>
 
-        <div className="border-b border-white/15 px-[18px] py-4">
-          <label className="flex cursor-pointer items-center gap-4 text-xl font-bold">
+        <div className={`border-b border-white/15 px-[18px] py-4 ${isOverdue ? "pointer-events-none opacity-75" : ""}`}>
+          <div className="flex items-center gap-4 text-xl font-bold">
             <input
+              id={`multi-day-task-${task.id}`}
               type="checkbox"
               checked={isMultiDay}
               onChange={(event) => patchAndMarkChanged(event.target.checked
                 ? { endAbsDay: task.absDay + 1, endSlotIndex: Math.min(SLOTS - 1, task.slotIndex + task.span) }
                 : { endAbsDay: undefined, endSlotIndex: undefined })}
-              className="h-5 w-5 accent-purple-600"
+              className="h-5 w-5 cursor-pointer accent-purple-600"
             />
-            Task nhiều ngày
-          </label>
+            <label htmlFor={`multi-day-task-${task.id}`} className="cursor-pointer">Task nhiều ngày</label>
+          </div>
 
           {!isMultiDay ? (
             <div className="mt-6 flex items-center justify-between gap-3 text-lg font-bold">
@@ -217,7 +224,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
           )}
         </div>
 
-        <div className="px-[18px] py-5">
+        {!isOverdue && <div className="px-[18px] py-5">
           <div className="flex items-center gap-3 border-b border-white/15 pb-3">
             <SmallAvatar name={currentUser?.name ?? "Tôi"} avatar={currentUser?.avatar ?? null} />
             <input value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập gì đó ..." />
@@ -238,7 +245,7 @@ export function TaskEditModal({ task, isCompanySchedule, isDark, users, currentU
               </div>
             ))}
           </div>}
-        </div>
+        </div>}
       </section>
     </div>
   );

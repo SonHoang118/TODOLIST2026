@@ -58,6 +58,32 @@ export function buildDateFromAbsDayAndSlot(absDay: number, slotIndex: number): D
   return date;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function taskEndTime(task: Task): number {
+  const endDay = task.endAbsDay ?? task.absDay;
+  const endSlot = task.endAbsDay !== undefined
+    ? (task.endSlotIndex ?? task.slotIndex + task.span)
+    : task.slotIndex + task.span;
+  return buildDateFromAbsDayAndSlot(endDay, endSlot).getTime();
+}
+
+export function isTaskOverdue(task: Task, now = Date.now()): boolean {
+  if (!task.updatedAt) return false;
+  const updatedAt = Date.parse(task.updatedAt);
+  return Number.isFinite(updatedAt)
+    && now - taskEndTime(task) >= DAY_MS
+    && now - updatedAt >= DAY_MS;
+}
+
+export function shouldAutoDeleteTask(task: Task, now = Date.now()): boolean {
+  if (!task.updatedAt) return false;
+  const updatedAt = Date.parse(task.updatedAt);
+  return Number.isFinite(updatedAt)
+    && now - updatedAt >= 15 * DAY_MS
+    && (task.status === "DONE" || isTaskOverdue(task, now));
+}
+
 export function withTaskAudit(task: Task, actor: SessionUser | null): Task {
   if (!actor) return task;
   return {

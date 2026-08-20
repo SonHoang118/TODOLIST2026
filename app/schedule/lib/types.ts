@@ -2,6 +2,8 @@ export interface Task {
   id: number;
   /** Incremented by the server; used to reject concurrent stale edits. */
   version?: number;
+  /** Server timestamp of the most recent persisted change. */
+  updatedAt?: string;
   title: string;
   description: string;
   absDay: number;

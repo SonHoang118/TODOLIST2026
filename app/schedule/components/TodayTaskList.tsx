@@ -2,6 +2,7 @@
 
 import { absDayToDate, dayShortOf, slotLabel } from "../lib/date";
 import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
+import { isTaskOverdue } from "../lib/domain/task";
 import type { ScheduleTheme, Task } from "../lib/types";
 
 interface TodayTaskListProps {
@@ -48,14 +49,15 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
           <div className="mt-5 grid gap-3">
             {todayTasks.map((task, index) => {
               const isDone = task.status === "DONE";
+              const isOverdue = isTaskOverdue(task);
               const isMultiDay = isMultiDayTask(task);
               const time = isMultiDay
                 ? `${absDayToDate(task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(task.slotIndex)} → ${absDayToDate(task.endAbsDay ?? task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(getMultiDayEndSlot(task))}`
                 : `${slotLabel(task.slotIndex)} – ${slotLabel(task.slotIndex + task.span)}`;
               return (
-                <article key={task.id} className={`schedule-list-card group rounded-2xl border ${theme.border} ${theme.hdrBg} p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
+                <article key={task.id} className={`schedule-list-card group relative rounded-2xl border ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : theme.border} ${theme.hdrBg} p-4 ${isOverdue ? "pb-7" : ""} shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
                   <div className="flex items-start gap-3">
-                    <button type="button" disabled={isCompanySchedule} onClick={() => onComplete(task.id)} aria-label={isDone ? "Đánh dấu đang làm" : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? "border-emerald-400 bg-emerald-500 text-white" : "border-zinc-500 hover:border-violet-400"} ${isCompanySchedule ? "cursor-not-allowed opacity-50" : ""}`}>{isDone && "✓"}</button>
+                    {!isOverdue && <button type="button" disabled={isCompanySchedule} onClick={() => onComplete(task.id)} aria-label={isDone ? "Đánh dấu đang làm" : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? "border-emerald-400 bg-emerald-500 text-white" : "border-zinc-500 hover:border-violet-400"} ${isCompanySchedule ? "cursor-not-allowed opacity-50" : ""}`}>{isDone && "✓"}</button>}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className={`font-semibold ${isDone ? "text-zinc-500 line-through" : ""}`}>{task.title}</p>
@@ -68,10 +70,11 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
-                      <button type="button" onClick={() => onEdit(task.id)} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>
+                      {!isOverdue && <button type="button" onClick={() => onEdit(task.id)} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>}
                       <button type="button" onClick={() => onRemove(task.id)} className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-500/20">Xóa</button>
                     </div>
                   </div>
+                  {isOverdue && <div className={`absolute bottom-0 left-0 right-0 rounded-b-xl py-1 text-center text-[10px] font-bold text-white ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "ĐÃ HẾT HẠN" : "QUÁ HẠN"}</div>}
                 </article>
               );
             })}
