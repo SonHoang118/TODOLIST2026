@@ -87,6 +87,12 @@ export function colorToPickerHex(taskColor: string): string {
   return TAILWIND_COLOR_TO_HEX[taskColor] ?? "#7c3aed";
 }
 
+export function colorToDisplayHex(taskColor: string, isDark: boolean): string {
+  if (taskColor === DEFAULT_TASK_BG || taskColor === LEGACY_DEFAULT_TASK_BG) return isDark ? "#0369a1" : "#0ea5e9";
+  if (taskColor === PERSONAL_TASK_BG) return isDark ? "#047857" : "#10b981";
+  return colorToPickerHex(taskColor);
+}
+
 export function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
 }

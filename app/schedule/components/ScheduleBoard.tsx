@@ -2159,6 +2159,7 @@ export default function SchedulePage() {
           <TaskEditModal
             task={task}
             isCompanySchedule={isCompanySchedule}
+            isDark={isDark}
             users={usersForAuth}
             currentUser={sessionUser}
             onClose={() => setReviewTaskId(null)}
