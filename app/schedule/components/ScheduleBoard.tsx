@@ -213,6 +213,7 @@ export default function SchedulePage() {
   resizingIdRef.current = resizingId;
 
   const scrollRef    = useRef<HTMLDivElement>(null);
+  const currentTimeLineRef = useRef<HTMLDivElement>(null);
   const scheduleScrollPositionRef = useRef<{ left: number; top: number } | null>(null);
   const taskEls      = useRef<Map<number, HTMLDivElement>>(new Map());
   const resizeSpanRef = useRef(1);
@@ -316,10 +317,17 @@ export default function SchedulePage() {
   }, [dayWidth, infiniteScroll, isDark, isGradientTimeText]);
 
   useLayoutEffect(() => {
-    const updateCurrentTime = () => setCurrentTime(new Date());
+    const updateCurrentTime = () => {
+      const now = new Date();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+      if (currentTimeLineRef.current) {
+        currentTimeLineRef.current.style.top = `${(nowMinutes / 30) * effSlotHRef.current - 1}px`;
+      }
+      queueMicrotask(() => setCurrentTime(now));
+    };
 
     // Replace a possibly stale server-rendered timestamp before the first paint.
-    queueMicrotask(updateCurrentTime);
+    updateCurrentTime();
     const interval = window.setInterval(updateCurrentTime, 30_000);
     window.addEventListener("focus", updateCurrentTime);
     document.addEventListener("visibilitychange", updateCurrentTime);
@@ -330,6 +338,14 @@ export default function SchedulePage() {
       document.removeEventListener("visibilitychange", updateCurrentTime);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (viewMode !== "SCHEDULE" || scheduleScrollPositionRef.current !== null) return;
+    const container = scrollRef.current;
+    if (!container) return;
+
+    container.scrollTop = currentTimeScrollTop(effSlotHRef.current);
+  }, [viewMode]);
 
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
@@ -570,11 +586,6 @@ export default function SchedulePage() {
     if (viewMode !== "SCHEDULE") return;
     const container = scrollRef.current;
     if (!container) return;
-
-    // Only set an initial position. Returning from Task List restores the saved view.
-    if (scheduleScrollPositionRef.current === null) {
-      container.scrollTop = currentTimeScrollTop(effSlotHRef.current);
-    }
 
     const onStart = (e: TouchEvent) => {
       if (interactionLockedRef.current) {
@@ -1675,6 +1686,7 @@ export default function SchedulePage() {
               {/* Current time red line */}
               {todayIdx >= 0 && (
                 <div
+                  ref={currentTimeLineRef}
                   className="absolute pointer-events-none z-20 flex items-center"
                   style={{ top: nowTop - 1, left: todayIdx * dayWidth, width: dayWidth }}
                 >
