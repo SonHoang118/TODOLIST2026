@@ -118,6 +118,7 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   };
   const deleteComment = async (commentId: number) => {
     if (!currentUser || deletingCommentId !== null) return;
+    if (!window.confirm("Bạn có chắc muốn xóa bình luận này không?")) return;
     setDeletingCommentId(commentId);
     setCommentError(null);
     try {
@@ -298,13 +299,16 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
             {commentsLoading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-transparent" aria-hidden /><span>Đang tải</span></> : <span>{commenters.length} comment</span>}
             {!commentsLoading && <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 transition-transform ${commentsOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
           </button>
-          {commentsOpen && <div className="mt-4 h-[220px] overflow-y-auto pr-2">
+          <div className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${commentsOpen ? "mt-4 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"}`}>
+            <div className={`min-h-0 overflow-hidden ${commentsOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
+              <div className="h-[220px] overflow-y-auto pr-2">
             {!commentsLoading && commenters.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-zinc-600" aria-label="Chưa có bình luận">
-                <svg viewBox="0 0 24 24" fill="none" className="h-14 w-14" aria-hidden>
-                  <path d="M20 11.5a7.5 7.5 0 0 1-8 7.48 8.7 8.7 0 0 1-3.45-.93L4 19.5l1.42-3.8A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
+              <div className="flex h-full items-center justify-center" aria-label="Chưa có bình luận">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/5 bg-white/[0.035] text-zinc-600 shadow-inner">
+                  <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8" aria-hidden>
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
               </div>
             ) : (
               <div className="space-y-7">
@@ -323,7 +327,9 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
                 ))}
               </div>
             )}
-          </div>}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
