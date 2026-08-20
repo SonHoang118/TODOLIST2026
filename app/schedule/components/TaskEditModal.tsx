@@ -81,6 +81,8 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   const [commentDraft, setCommentDraft] = useState("");
   const [commentsLoading, setCommentsLoading] = useState(true);
   const [commentSending, setCommentSending] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<number | null>(null);
+  const [newCommentId, setNewCommentId] = useState<number | null>(null);
   const [commentError, setCommentError] = useState<string | null>(null);
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
@@ -104,12 +106,31 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
       if (!response.ok) throw new Error("Không thể gửi bình luận.");
       const savedComment = await response.json() as TaskComment;
       setCommenters((current) => [savedComment, ...current]);
+      setNewCommentId(savedComment.id);
       setCommentDraft("");
       setCommentsOpen(true);
     } catch (error) {
       setCommentError(error instanceof Error ? error.message : "Không thể gửi bình luận.");
     } finally {
       setCommentSending(false);
+    }
+  };
+  const deleteComment = async (commentId: number) => {
+    if (!currentUser || deletingCommentId !== null) return;
+    setDeletingCommentId(commentId);
+    setCommentError(null);
+    try {
+      const response = await fetch("/api/schedule/comments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope: scheduleScope, ownerId: scheduleOwnerId, taskId: task.id, commentId, authorUserId: currentUser.id }),
+      });
+      if (!response.ok) throw new Error("Không thể xóa bình luận.");
+      setCommenters((current) => current.filter((comment) => comment.id !== commentId));
+    } catch (error) {
+      setCommentError(error instanceof Error ? error.message : "Không thể xóa bình luận.");
+    } finally {
+      setDeletingCommentId(null);
     }
   };
 
@@ -267,21 +288,26 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
           {!isOverdue && <div className="flex items-center gap-3 border-b border-white/15 pb-3">
             <SmallAvatar name={currentUser?.name ?? "Tôi"} avatar={currentUser?.avatar ?? null} />
             <input maxLength={2000} value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void submitComment(); }} className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-zinc-500" placeholder="Nhập bình luận..." />
-            <button type="button" onClick={() => void submitComment()} disabled={!commentDraft.trim() || !currentUser || commentSending} aria-label="Gửi bình luận" className="text-3xl text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">{commentSending ? "…" : "➤"}</button>
+            <button type="button" onClick={() => void submitComment()} disabled={!commentDraft.trim() || !currentUser || commentSending} aria-label="Gửi bình luận" className="flex h-8 w-8 items-center justify-center text-sky-400 transition disabled:cursor-not-allowed disabled:opacity-35">
+              {commentSending ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" aria-hidden /> : <span className="text-3xl">➤</span>}
+            </button>
           </div>}
           {commentError && <p className="mt-2 text-xs text-red-400">{commentError}</p>}
-          <button type="button" onClick={() => setCommentsOpen((open) => !open)} aria-expanded={commentsOpen} className="mt-4 flex items-center gap-2 text-base font-bold">
-            {commenters.length} comment
-            <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 transition-transform ${commentsOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <button type="button" onClick={() => setCommentsOpen((open) => !open)} disabled={commentsLoading} aria-expanded={commentsOpen} className="mt-4 flex h-6 items-center gap-2 text-base font-bold disabled:cursor-default">
+            {commentsLoading ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-300 border-t-transparent" aria-hidden /><span>Đang tải</span></> : <span>{commenters.length} comment</span>}
+            {!commentsLoading && <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 transition-transform ${commentsOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
           </button>
-          {commentsOpen && <div className="mt-4 max-h-[220px] space-y-7 overflow-y-auto pr-2">
-            {commentsLoading && <p className="text-sm text-zinc-500">Đang tải bình luận...</p>}
-            {!commentsLoading && commenters.length === 0 && <p className="text-sm text-zinc-500">Chưa có bình luận.</p>}
+          {commentsOpen && !commentsLoading && <div className="mt-4 max-h-[220px] space-y-7 overflow-y-auto pr-2">
+            {commenters.length === 0 && <p className="text-sm text-zinc-500">Chưa có bình luận.</p>}
             {commenters.map((comment) => (
-              <div key={comment.id} className="flex gap-3">
+              <div key={comment.id} className={`flex gap-3 ${comment.id === newCommentId ? "schedule-comment-enter" : ""}`}>
                 <SmallAvatar name={comment.authorName} avatar={comment.authorAvatar} />
                 <div className="min-w-0 text-sm leading-snug">
-                  <p><span className="font-bold">{comment.authorUserId === currentUser?.id ? "Tôi" : comment.authorName}</span> <span className="ml-1 text-zinc-500">{commentTimeLabel(comment.createdAt)}</span></p>
+                  <p>
+                    <span className="font-bold">{comment.authorUserId === currentUser?.id ? "Tôi" : comment.authorName}</span>
+                    <span className="ml-1 text-zinc-500">{commentTimeLabel(comment.createdAt)}</span>
+                    {comment.authorUserId === currentUser?.id && <button type="button" onClick={() => void deleteComment(comment.id)} disabled={deletingCommentId === comment.id} className="ml-2 font-medium text-red-400 transition hover:text-red-300 disabled:opacity-50">{deletingCommentId === comment.id ? "Đang xóa" : "Xóa"}</button>}
+                  </p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-zinc-100">{comment.content}</p>
                 </div>
               </div>

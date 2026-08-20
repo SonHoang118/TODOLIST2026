@@ -87,3 +87,22 @@ export async function POST(request: Request) {
     RETURNING id, task_id, author_user_id, author_name, author_avatar, content, created_at` as CommentRow[];
   return Response.json(toComment(rows[0]!), { status: 201 });
 }
+
+export async function DELETE(request: Request) {
+  let body: { scope?: ScheduleScope; ownerId?: number | null; taskId?: number; commentId?: number; authorUserId?: number };
+  try {
+    body = await request.json() as typeof body;
+  } catch {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+  const context = parseContext(body);
+  if (!context || !Number.isSafeInteger(body.taskId) || body.taskId! < 1 || !Number.isSafeInteger(body.commentId) || body.commentId! < 1 || !Number.isSafeInteger(body.authorUserId) || body.authorUserId! < 1) {
+    return Response.json({ error: "Invalid comment payload." }, { status: 400 });
+  }
+  await ensureTables();
+  const deleted = await sql`DELETE FROM schedule_task_comments
+    WHERE id = ${body.commentId} AND scope_key = ${context.scopeKey} AND task_id = ${body.taskId} AND author_user_id = ${body.authorUserId}
+    RETURNING id` as Array<{ id: string | number }>;
+  if (!deleted[0]) return Response.json({ error: "Comment not found or cannot be deleted." }, { status: 404 });
+  return Response.json({ deletedId: Number(deleted[0].id) });
+}
