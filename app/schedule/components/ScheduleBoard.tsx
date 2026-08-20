@@ -41,6 +41,15 @@ import type { AppNotification, ScheduleScope, SessionUser, Task, TaskLabelValue,
 type RgbColor = { r: number; g: number; b: number };
 
 const DEFAULT_TODAY_COLUMN_COLOR = "#2E1065";
+const TODAY_COLUMN_COLOR_STORAGE_KEY = "dhs-todo-today-column-color";
+const SCHEDULE_SETTINGS_STORAGE_KEY = "dhs-todo-schedule-settings";
+
+type StoredScheduleSettings = {
+  isDark?: boolean;
+  isGradientTimeText?: boolean;
+  infiniteScroll?: boolean;
+  dayWidth?: number;
+};
 
 const TIME_GRADIENT_ANCHORS: Array<{ minute: number; color: string }> = [
   { minute: 0, color: "#020617" },
@@ -134,6 +143,7 @@ export default function SchedulePage() {
   const [isGradientTimeText, setIsGradientTimeText] = useState(true);
   const [todayColumnColor, setTodayColumnColor] = useState(DEFAULT_TODAY_COLUMN_COLOR);
   const [todayColorPickerOpen, setTodayColorPickerOpen] = useState(false);
+  const [bulkDeleteAfterDate, setBulkDeleteAfterDate] = useState(() => absDayToDateInput(dateToAbsDay(new Date())));
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null; requiresLoad: boolean } | null>(null);
@@ -168,6 +178,7 @@ export default function SchedulePage() {
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSettingsHydratedRef         = useRef(false);
 
   sessionUserRef.current = sessionUser;
   usersForAuthRef.current = usersForAuth;
@@ -240,6 +251,65 @@ export default function SchedulePage() {
   const todayHeaderStyle = { backgroundColor: `color-mix(in srgb, ${todayColumnColor} ${isDark ? 20 : 40}%, transparent)` };
   const todayWeekdayStyle = { color: `color-mix(in srgb, ${todayColumnColor} 55%, ${isDark ? "white" : "black"})` };
 
+  const updateTodayColumnColor = (color: string) => {
+    setTodayColumnColor(color);
+    try {
+      window.localStorage.setItem(TODAY_COLUMN_COLOR_STORAGE_KEY, color);
+    } catch {
+      // Keep the live setting usable when browser storage is unavailable.
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const savedColor = window.localStorage.getItem(TODAY_COLUMN_COLOR_STORAGE_KEY);
+      if (savedColor && isHexColor(savedColor)) {
+        queueMicrotask(() => {
+          if (!cancelled) setTodayColumnColor(savedColor);
+        });
+      }
+    } catch {
+      // Use the default color when browser storage is unavailable.
+    }
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let savedSettings: StoredScheduleSettings | null = null;
+    try {
+      savedSettings = JSON.parse(window.localStorage.getItem(SCHEDULE_SETTINGS_STORAGE_KEY) ?? "null") as StoredScheduleSettings | null;
+    } catch {
+      savedSettings = null;
+    }
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (savedSettings) {
+        if (typeof savedSettings.isDark === "boolean") setIsDark(savedSettings.isDark);
+        if (typeof savedSettings.isGradientTimeText === "boolean") setIsGradientTimeText(savedSettings.isGradientTimeText);
+        if (typeof savedSettings.infiniteScroll === "boolean") setInfiniteScroll(savedSettings.infiniteScroll);
+        if (typeof savedSettings.dayWidth === "number" && savedSettings.dayWidth >= DAY_W_MIN && savedSettings.dayWidth <= DAY_W_MAX) {
+          setDayWidth(savedSettings.dayWidth);
+        }
+      }
+      scheduleSettingsHydratedRef.current = true;
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!scheduleSettingsHydratedRef.current) return;
+    try {
+      const settings: StoredScheduleSettings = { isDark, isGradientTimeText, infiniteScroll, dayWidth };
+      window.localStorage.setItem(SCHEDULE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // Keep settings usable when browser storage is unavailable.
+    }
+  }, [dayWidth, infiniteScroll, isDark, isGradientTimeText]);
+
   // View geometry (depends on mode)
   const weekDates       = getWeekDates(weekOffset);
   const today           = new Date();
@@ -250,6 +320,8 @@ export default function SchedulePage() {
     : dateToAbsDay(weekDates[0]);
   const colDates  = Array.from({ length: colCount }, (_, i) => absDayToDate(viewStartAbsDay + i));
   const todayIdx  = colDates.findIndex(d => isSameDay(d, today));
+  const bulkDeleteCutoffAbsDay = dateInputToAbsDay(bulkDeleteAfterDate);
+  const bulkDeleteTaskCount = bulkDeleteCutoffAbsDay === null ? 0 : tasks.filter((task) => task.absDay > bulkDeleteCutoffAbsDay).length;
   const multiDayTaskLanes = getMultiDayTaskLanes(tasks);
   const multiDayBars = layoutMultiDayBars(tasks, viewStartAbsDay, colCount, dayWidth);
   const viewStartSlot = viewStartAbsDay * SLOTS;
@@ -1126,6 +1198,31 @@ export default function SchedulePage() {
   const handleToggleInfiniteScroll = () => {
     setInfiniteScroll(v => !v);
     setResizingId(null);
+  };
+
+  const handleBulkDeleteAfterDate = () => {
+    const cutoffAbsDay = dateInputToAbsDay(bulkDeleteAfterDate);
+    if (cutoffAbsDay === null) {
+      setBadge("Vui lòng chọn ngày hợp lệ");
+      return;
+    }
+    const tasksToDelete = tasksRef.current.filter((task) => task.absDay > cutoffAbsDay);
+    if (tasksToDelete.length === 0) {
+      setBadge("Không có task nào sau ngày đã chọn");
+      return;
+    }
+
+    const cutoffLabel = absDayToDate(cutoffAbsDay).toLocaleDateString("vi-VN");
+    const shouldDelete = window.confirm(
+      `Bạn có chắc muốn xóa ${tasksToDelete.length} task có ngày bắt đầu sau ${cutoffLabel} không? Hành động này không thể hoàn tác.`,
+    );
+    if (!shouldDelete) return;
+
+    const deletedIds = new Set(tasksToDelete.map((task) => task.id));
+    setTasks((current) => current.filter((task) => !deletedIds.has(task.id)));
+    setResizingId(null);
+    setReviewTaskId((current) => current !== null && deletedIds.has(current) ? null : current);
+    setBadge(`Đã xóa ${tasksToDelete.length} task`);
   };
 
   const handleNotificationTaskClick = (notification: AppNotification) => {
@@ -2224,6 +2321,30 @@ export default function SchedulePage() {
                   <option value="140" label="140" />
                 </datalist>
               </div>
+
+              <div className={`mt-2 rounded-xl border border-red-500/30 bg-red-500/5 px-3 py-3`}>
+                <p className="text-sm font-semibold text-red-400">Xóa nhiều task</p>
+                <p className={`mt-1 text-[11px] leading-4 ${th.subtext}`}>
+                  Xóa các task có ngày bắt đầu sau ngày được chọn trong lịch hiện tại.
+                </p>
+                <label className="mt-3 block">
+                  <span className={`text-[11px] ${th.subtext}`}>Xóa task sau ngày</span>
+                  <input
+                    type="date"
+                    value={bulkDeleteAfterDate}
+                    onChange={(event) => setBulkDeleteAfterDate(event.target.value)}
+                    className={`mt-1 h-9 w-full rounded-lg px-2 text-sm outline-none ${th.inputBg}`}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteAfterDate}
+                  disabled={isScheduleLoading || bulkDeleteTaskCount === 0}
+                  className="mt-3 w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-500 disabled:cursor-default disabled:opacity-45"
+                >
+                  {isScheduleLoading ? "Đang tải task..." : `Xóa ${bulkDeleteTaskCount} task`}
+                </button>
+              </div>
             </div>
           </div>
       </div>
@@ -2244,10 +2365,10 @@ export default function SchedulePage() {
               </div>
               <button type="button" onClick={() => setTodayColorPickerOpen(false)} className={`flex h-8 w-8 items-center justify-center rounded-lg ${th.btnSecondary}`} aria-label="Đóng bảng chọn màu">✕</button>
             </div>
-            <HexColorPicker color={todayColumnColor} onChange={setTodayColumnColor} />
+            <HexColorPicker color={todayColumnColor} onChange={updateTodayColumnColor} />
             <button
               type="button"
-              onClick={() => setTodayColumnColor(DEFAULT_TODAY_COLUMN_COLOR)}
+              onClick={() => updateTodayColumnColor(DEFAULT_TODAY_COLUMN_COLOR)}
               disabled={todayColumnColor.toUpperCase() === DEFAULT_TODAY_COLUMN_COLOR}
               className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-default disabled:opacity-45 ${th.btnSecondary}`}
             >
