@@ -210,8 +210,10 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
               </div>
             </div>
           )}
-          <button type="button" onClick={onClose} aria-label={hasChanges ? "Hoàn tất chỉnh sửa" : "Đóng"} className={`absolute right-4 top-3 flex h-11 w-11 items-center justify-center rounded-full transition ${hasChanges ? "border border-emerald-300/60 bg-emerald-500/30 text-emerald-50 shadow-[0_0_0_3px_rgba(16,185,129,0.12)] hover:bg-emerald-500/40" : "bg-black/30 text-4xl font-light leading-none hover:bg-black/45"}`}>
-            {hasChanges ? <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden><path d="m5 12.5 4.25 4.25L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : "×"}
+          <button type="button" onClick={onClose} aria-label={hasChanges ? "Hoàn tất chỉnh sửa" : "Đóng"} className="group absolute right-0 top-0 flex h-[68px] w-20 items-start justify-end pr-4 pt-3">
+            <span className={`flex h-11 w-11 items-center justify-center rounded-full transition ${hasChanges ? "border border-emerald-300/60 bg-emerald-500/30 text-emerald-50 shadow-[0_0_0_3px_rgba(16,185,129,0.12)] group-hover:bg-emerald-500/40" : "bg-black/30 text-4xl font-light leading-none group-hover:bg-black/45"}`}>
+              {hasChanges ? <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden><path d="m5 12.5 4.25 4.25L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg> : "×"}
+            </span>
           </button>
         </div>
 
