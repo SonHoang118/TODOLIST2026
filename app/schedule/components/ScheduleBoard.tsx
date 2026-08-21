@@ -1025,6 +1025,23 @@ export default function SchedulePage() {
   }, [badge]);
 
   useEffect(() => {
+    if (!isNotificationNavigating) return;
+    const safetyTimer = setTimeout(() => {
+      setIsNotificationNavigating(false);
+      setNotificationTaskToFocus(null);
+      if (notificationScrollStartTimerRef.current) {
+        clearTimeout(notificationScrollStartTimerRef.current);
+        notificationScrollStartTimerRef.current = null;
+      }
+      if (notificationScrollFrameRef.current !== null) {
+        cancelAnimationFrame(notificationScrollFrameRef.current);
+        notificationScrollFrameRef.current = null;
+      }
+    }, 4_000);
+    return () => clearTimeout(safetyTimer);
+  }, [isNotificationNavigating]);
+
+  useEffect(() => {
     if (badgeHideTimerRef.current) {
       clearTimeout(badgeHideTimerRef.current);
       badgeHideTimerRef.current = null;
@@ -1437,7 +1454,14 @@ export default function SchedulePage() {
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
-      {isNotificationNavigating && <div className="pointer-events-none fixed inset-0 z-[60] cursor-wait" aria-label="Đang điều hướng đến công việc" />}
+      {isNotificationNavigating && (
+        <div
+          className="fixed inset-0 z-[60] cursor-wait touch-none"
+          aria-label="Đang điều hướng đến công việc"
+          role="status"
+          onContextMenu={(event) => event.preventDefault()}
+        />
+      )}
 
       {pushNotifications.showPermissionIntro && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-5" role="dialog" aria-modal="true" aria-labelledby="notification-permission-title">
