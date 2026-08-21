@@ -1,5 +1,7 @@
 export interface Task {
   id: number;
+  /** New tasks stay in draft mode until the creator closes the edit dialog. */
+  notificationPending?: boolean;
   /** Derived from persisted comments; not stored inside the task JSON payload. */
   commentCount?: number;
   /** Incremented by the server; used to reject concurrent stale edits. */

@@ -7,6 +7,10 @@ import { isTaskReadOnly, shouldAutoDeleteTask } from "../../../schedule/lib/doma
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 90;
+
+const COMPLETION_NOTIFICATION_DELAY_MINUTES = 1;
+const COMPLETION_DISPATCH_DELAY_MS = 61_000;
 
 type StoredRow = { id: string | number; data: Task | string; version: number; updated_at: string | Date; comment_count?: string | number };
 type TaskContext = { scope?: ScheduleScope; ownerId?: number | null };
@@ -85,10 +89,12 @@ async function userIdByName(name: string | null): Promise<number | null> {
 
 async function createNotifications(context: { scope: ScheduleScope; ownerId: number | null }, task: Task, previous: Task | null): Promise<boolean> {
   const actorName = task.updatedByName ?? task.createdByName;
-  if (!previous && context.scope === "USER" && context.ownerId !== task.createdByUserId && task.assignedFromName) {
+  const isReadyToAnnounce = (!previous && !task.notificationPending)
+    || (previous?.notificationPending === true && task.notificationPending !== true);
+  if (isReadyToAnnounce && context.scope === "USER" && context.ownerId !== task.createdByUserId && task.assignedFromName) {
     return notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id, context.scope, context.ownerId);
   }
-  if (!previous && context.scope === "COMPANY") {
+  if (isReadyToAnnounce && context.scope === "COMPANY") {
     const users = await sql`SELECT id FROM schedule_users WHERE id <> ${task.createdByUserId ?? -1}` as Array<{ id: string | number }>;
     const queued = await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id, context.scope, null)));
     return queued.some(Boolean);
@@ -98,7 +104,20 @@ async function createNotifications(context: { scope: ScheduleScope; ownerId: num
     queued = await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id, context.scope, context.ownerId) || queued;
   }
   if (context.scope === "USER" && previous?.status !== "DONE" && task.status === "DONE") {
-    queued = await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id, context.scope, context.ownerId) || queued;
+    const recipientUserId = await userIdByName(task.assignedFromName);
+    if (recipientUserId && recipientUserId > 0) {
+      await queuePushNotification(recipientUserId, {
+        title: "Công việc đã hoàn thành",
+        body: `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`,
+        url: "/schedule",
+        kind: "COMPLETED",
+        actorName,
+        taskId: task.id,
+        taskScope: context.scope,
+        taskOwnerUserId: context.ownerId,
+      }, COMPLETION_NOTIFICATION_DELAY_MINUTES);
+      queued = true;
+    }
   }
   if (context.scope === "COMPANY") {
     const newlyConfirmedBy = task.confirmedByUserIds.find((id) => !previous?.confirmedByUserIds.includes(id));
@@ -146,6 +165,7 @@ export async function PUT(request: Request) {
   await ensureTable();
   const saved: Task[] = [];
   let shouldDispatchPush = false;
+  let shouldDispatchDelayedCompletion = false;
   try {
     for (const task of changes) {
       const previousVersion = task.version ?? 0;
@@ -155,6 +175,14 @@ export async function PUT(request: Request) {
       const previous = previousRows[0] ? rowToTask(previousRows[0]) : null;
       if (previous && isTaskReadOnly(previous)) {
         return Response.json({ error: "Task đã khóa chỉ có thể xem hoặc xóa." }, { status: 423 });
+      }
+      if (context.scope === "USER" && previous?.status === "DONE" && task.status !== "DONE") {
+        await sql`DELETE FROM schedule_push_jobs
+          WHERE sent_at IS NULL AND kind = 'COMPLETED' AND task_id = ${task.id}
+            AND task_scope = ${context.scope} AND task_owner_user_id IS NOT DISTINCT FROM ${context.ownerId}`;
+      }
+      if (context.scope === "USER" && previous?.status !== "DONE" && task.status === "DONE") {
+        shouldDispatchDelayedCompletion = true;
       }
       const data = { ...task };
       delete data.version;
@@ -188,6 +216,16 @@ export async function PUT(request: Request) {
       } catch (error) {
         // The queued job remains available for the cron retry.
         console.error("Unable to dispatch task push notification after the response.", error);
+      }
+    });
+  }
+  if (shouldDispatchDelayedCompletion) {
+    after(async () => {
+      await new Promise((resolve) => setTimeout(resolve, COMPLETION_DISPATCH_DELAY_MS));
+      try {
+        await dispatchDuePushNotifications();
+      } catch (error) {
+        console.error("Unable to dispatch delayed completion notification.", error);
       }
     });
   }

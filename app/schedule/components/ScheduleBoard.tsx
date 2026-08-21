@@ -963,6 +963,7 @@ export default function SchedulePage() {
 
             fn.current.setTasks(prev => [...prev, {
               id,
+              notificationPending: true,
               title: randomTaskTitle(),
               description: "",
               absDay: viewStartAbsDayRef.current + day,
@@ -2456,7 +2457,10 @@ export default function SchedulePage() {
             isDark={isDark}
             users={usersForAuth}
             currentUser={sessionUser}
-            onClose={() => setReviewTaskId(null)}
+            onClose={() => {
+              if (task.notificationPending) patchTask(task.id, { notificationPending: false });
+              setReviewTaskId(null);
+            }}
             onDelete={() => {
               if (applyTaskAction("remove", task.id)) setReviewTaskId(null);
             }}
