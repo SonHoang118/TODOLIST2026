@@ -6,6 +6,7 @@ import type { AppNotification } from "../types";
 export function useNotifications(userId: number | null) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [recentlyReadCount, setRecentlyReadCount] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -49,5 +50,21 @@ export function useNotifications(userId: number | null) {
     });
   }, [notifications, userId]);
 
-  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, isMarkingAllRead, recentlyReadCount, markAllRead, markRead };
+  const deleteAll = useCallback(async () => {
+    if (userId === null || notifications.length === 0 || isDeletingAll) return;
+    const previousNotifications = notifications;
+    setIsDeletingAll(true);
+    setNotifications([]);
+    setRecentlyReadCount(0);
+    try {
+      const response = await fetch(`/api/notifications?userId=${userId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Không thể xóa thông báo.");
+    } catch {
+      setNotifications(previousNotifications);
+    } finally {
+      setIsDeletingAll(false);
+    }
+  }, [isDeletingAll, notifications, userId]);
+
+  return { notifications, unreadCount: notifications.filter((item) => !item.isRead).length, isMarkingAllRead, isDeletingAll, recentlyReadCount, markAllRead, markRead, deleteAll };
 }

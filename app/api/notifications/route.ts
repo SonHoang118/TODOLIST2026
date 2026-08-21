@@ -40,6 +40,7 @@ export async function GET(request: Request) {
   const userId = Number(new URL(request.url).searchParams.get("userId"));
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "A valid user is required." }, { status: 400 });
   await ensureTable();
+  await sql`DELETE FROM schedule_notifications WHERE created_at < NOW() - INTERVAL '10 days'`;
   const rows = await sql`SELECT id, recipient_user_id, kind, title, body, actor_name AS "actorName", task_id AS "taskId", task_scope AS "taskScope", task_owner_user_id AS "taskOwnerUserId", is_read, created_at AS "createdAt"
     FROM schedule_notifications WHERE recipient_user_id = ${userId} ORDER BY created_at DESC LIMIT 100` as NotificationRow[];
   return Response.json(rows.map(toNotification), { headers: { "Cache-Control": "no-store" } });
@@ -54,5 +55,13 @@ export async function PATCH(request: Request) {
   await ensureTable();
   if (body.all) await sql`UPDATE schedule_notifications SET is_read = TRUE WHERE recipient_user_id = ${body.userId}`;
   else for (const id of body.ids ?? []) await sql`UPDATE schedule_notifications SET is_read = TRUE WHERE recipient_user_id = ${body.userId} AND id = ${id}`;
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  const userId = Number(new URL(request.url).searchParams.get("userId"));
+  if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "A valid user is required." }, { status: 400 });
+  await ensureTable();
+  await sql`DELETE FROM schedule_notifications WHERE recipient_user_id = ${userId}`;
   return Response.json({ ok: true });
 }
