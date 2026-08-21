@@ -36,6 +36,18 @@ type JobRow = {
 type UserRow = { id: string | number };
 type TodayTaskRow = { title: string };
 
+function targetUrlForJob(job: JobRow): string {
+  if (job.task_id === null || job.task_scope === null) return job.target_url;
+  const params = new URLSearchParams({
+    notificationTaskId: String(job.task_id),
+    notificationScope: job.task_scope,
+  });
+  if (job.task_scope === "USER" && job.task_owner_user_id !== null) {
+    params.set("notificationOwnerId", String(job.task_owner_user_id));
+  }
+  return `/schedule?${params}`;
+}
+
 export async function ensurePushTables(): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS schedule_notifications (
     id BIGSERIAL PRIMARY KEY, recipient_user_id BIGINT NOT NULL, kind TEXT NOT NULL,
@@ -157,7 +169,7 @@ export async function dispatchDuePushNotifications(): Promise<{ sent: number; re
     }
     const subscriptions = await sql`SELECT id, endpoint, p256dh, auth
       FROM schedule_push_subscriptions WHERE user_id = ${job.recipient_user_id}` as SubscriptionRow[];
-    const payload = JSON.stringify({ title: job.title, body: job.body, url: job.target_url, icon: "/logoApp.png" });
+    const payload = JSON.stringify({ title: job.title, body: job.body, url: targetUrlForJob(job), icon: "/logoApp.png" });
     let retry = false;
     for (const subscription of subscriptions) {
       try {

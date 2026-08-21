@@ -183,6 +183,7 @@ export default function SchedulePage() {
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasHandledPushNavigationRef         = useRef(false);
   const scheduleSettingsHydratedRef         = useRef(false);
 
   sessionUserRef.current = sessionUser;
@@ -1075,6 +1076,33 @@ export default function SchedulePage() {
     setSessionUser(activeUser);
     setAuthUserId((current) => usersForAuth.some((user) => user.id === current) ? current : activeUser.id);
   }, [usersForAuth]);
+
+  useEffect(() => {
+    if (hasHandledPushNavigationRef.current || sessionUser === null) return;
+    const params = new URLSearchParams(window.location.search);
+    const taskId = Number(params.get("notificationTaskId"));
+    const targetScope = params.get("notificationScope") as ScheduleScope | null;
+    const targetOwnerId = targetScope === "USER" ? Number(params.get("notificationOwnerId")) : null;
+    if (!Number.isSafeInteger(taskId) || taskId < 1 || (targetScope !== "USER" && targetScope !== "COMPANY") || (targetScope === "USER" && (!Number.isSafeInteger(targetOwnerId) || targetOwnerId! < 1))) {
+      return;
+    }
+
+    hasHandledPushNavigationRef.current = true;
+    const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
+    setIsNotificationNavigating(true);
+    setHasObservedNotificationLoad(false);
+    setViewMode("SCHEDULE");
+    setNotificationTaskToFocus({ taskId, scope: targetScope, ownerId: targetOwnerId, requiresLoad });
+    if (targetScope !== scheduleScope) setScheduleScope(targetScope);
+    if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
+    if (!infiniteScroll) setInfiniteScroll(true);
+
+    params.delete("notificationTaskId");
+    params.delete("notificationScope");
+    params.delete("notificationOwnerId");
+    const cleanUrl = `${window.location.pathname}${params.size > 0 ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", cleanUrl);
+  }, [authUserId, infiniteScroll, scheduleScope, sessionUser]);
 
   const handleViewUserChange = (nextUserId: number) => {
     if (nextUserId === authUserIdRef.current) return;
