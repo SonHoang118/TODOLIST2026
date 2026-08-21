@@ -1,6 +1,6 @@
 import * as Ably from "ably";
 import { sql } from "../../../lib/database";
-import { queuePushNotification } from "../../../lib/push-notifications";
+import { dispatchDuePushNotifications, queuePushNotification } from "../../../lib/push-notifications";
 import type { ScheduleScope, Task } from "../../../schedule/lib/types";
 import { isTaskReadOnly, shouldAutoDeleteTask } from "../../../schedule/lib/domain/task";
 
@@ -70,9 +70,10 @@ async function publish(context: { scope: ScheduleScope; ownerId: number | null }
   await client.channels.get(channelName(context)).publish("tasks.changed", { tasks, deletedIds });
 }
 
-async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number, taskScope: ScheduleScope, taskOwnerUserId: number | null): Promise<void> {
-  if (!recipientUserId || recipientUserId < 1) return;
-  await queuePushNotification(recipientUserId, { title, body, url: "/schedule", kind, actorName, taskId, taskScope, taskOwnerUserId });
+async function notify(recipientUserId: number | null, kind: string, title: string, body: string, actorName: string | null, taskId: number, taskScope: ScheduleScope, taskOwnerUserId: number | null): Promise<boolean> {
+  if (!recipientUserId || recipientUserId < 1) return false;
+  await queuePushNotification(recipientUserId, { title, body, url: "/schedule", kind, actorName, taskId, taskScope, taskOwnerUserId }, 0);
+  return true;
 }
 
 async function userIdByName(name: string | null): Promise<number | null> {
@@ -81,31 +82,32 @@ async function userIdByName(name: string | null): Promise<number | null> {
   return rows[0] ? Number(rows[0].id) : null;
 }
 
-async function createNotifications(context: { scope: ScheduleScope; ownerId: number | null }, task: Task, previous: Task | null): Promise<void> {
+async function createNotifications(context: { scope: ScheduleScope; ownerId: number | null }, task: Task, previous: Task | null): Promise<boolean> {
   const actorName = task.updatedByName ?? task.createdByName;
   if (!previous && context.scope === "USER" && context.ownerId !== task.createdByUserId && task.assignedFromName) {
-    await notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id, context.scope, context.ownerId);
-    return;
+    return notify(context.ownerId, "ASSIGNED", "Bạn có công việc mới", `${task.createdByName ?? "Một đồng nghiệp"} đã giao cho bạn: ${task.title}`, task.createdByName, task.id, context.scope, context.ownerId);
   }
   if (!previous && context.scope === "COMPANY") {
     const users = await sql`SELECT id FROM schedule_users WHERE id <> ${task.createdByUserId ?? -1}` as Array<{ id: string | number }>;
-    await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id, context.scope, null)));
-    return;
+    const queued = await Promise.all(users.map((user) => notify(Number(user.id), "COMPANY_CREATED", "Task mới trên lịch công ty", `${task.createdByName ?? "Một đồng nghiệp"} đã tạo: ${task.title}`, task.createdByName, task.id, context.scope, null)));
+    return queued.some(Boolean);
   }
+  let queued = false;
   if (context.scope === "USER" && previous?.status === "PENDING" && task.status === "IN_PROGRESS") {
-    await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id, context.scope, context.ownerId);
+    queued = await notify(await userIdByName(task.assignedFromName), "ACCEPTED", "Công việc đã được tiếp nhận", `${actorName ?? "Người được giao"} đã chấp nhận: ${task.title}`, actorName, task.id, context.scope, context.ownerId) || queued;
   }
   if (context.scope === "USER" && previous?.status !== "DONE" && task.status === "DONE") {
-    await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id, context.scope, context.ownerId);
+    queued = await notify(await userIdByName(task.assignedFromName), "COMPLETED", "Công việc đã hoàn thành", `${actorName ?? "Người được giao"} đã hoàn thành: ${task.title}`, actorName, task.id, context.scope, context.ownerId) || queued;
   }
   if (context.scope === "COMPANY") {
     const newlyConfirmedBy = task.confirmedByUserIds.find((id) => !previous?.confirmedByUserIds.includes(id));
     if (newlyConfirmedBy && newlyConfirmedBy !== task.createdByUserId) {
       const users = await sql`SELECT name FROM schedule_users WHERE id = ${newlyConfirmedBy} LIMIT 1` as Array<{ name: string }>;
       const confirmerName = users[0]?.name ?? "Một đồng nghiệp";
-      await notify(task.createdByUserId, "COMPANY_CONFIRMED", "Task lịch công ty đã được xác nhận", `${confirmerName} đã xác nhận: ${task.title}`, confirmerName, task.id, context.scope, null);
+      queued = await notify(task.createdByUserId, "COMPANY_CONFIRMED", "Task lịch công ty đã được xác nhận", `${confirmerName} đã xác nhận: ${task.title}`, confirmerName, task.id, context.scope, null) || queued;
     }
   }
+  return queued;
 }
 
 export async function GET(request: Request) {
@@ -142,6 +144,7 @@ export async function PUT(request: Request) {
 
   await ensureTable();
   const saved: Task[] = [];
+  let shouldDispatchPush = false;
   try {
     for (const task of changes) {
       const previousVersion = task.version ?? 0;
@@ -160,13 +163,13 @@ export async function PUT(request: Request) {
         const rows = (await sql`INSERT INTO schedule_task_entries (scope_key, id, data) VALUES (${context.scopeKey}, ${task.id}, ${JSON.stringify(data)}::jsonb) RETURNING id, data, version, updated_at`) as StoredRow[];
         const savedTask = { ...rowToTask(rows[0]!), commentCount: await commentCountFor(context.scopeKey, task.id) };
         saved.push(savedTask);
-        await createNotifications(context, savedTask, previous);
+        shouldDispatchPush = await createNotifications(context, savedTask, previous) || shouldDispatchPush;
       } else {
         const rows = (await sql`UPDATE schedule_task_entries SET data = ${JSON.stringify(data)}::jsonb, version = version + 1, updated_at = NOW() WHERE scope_key = ${context.scopeKey} AND id = ${task.id} AND version = ${previousVersion} RETURNING id, data, version, updated_at`) as StoredRow[];
         if (rows.length === 0) return Response.json({ error: "Task was changed by another user." }, { status: 409 });
         const savedTask = { ...rowToTask(rows[0]!), commentCount: await commentCountFor(context.scopeKey, task.id) };
         saved.push(savedTask);
-        await createNotifications(context, savedTask, previous);
+        shouldDispatchPush = await createNotifications(context, savedTask, previous) || shouldDispatchPush;
       }
     }
     for (const id of deletedIds) {
@@ -175,6 +178,15 @@ export async function PUT(request: Request) {
   } catch (error) {
     if (error instanceof Error && /duplicate key/i.test(error.message)) return Response.json({ error: "Task was changed by another user." }, { status: 409 });
     throw error;
+  }
+
+  if (shouldDispatchPush) {
+    try {
+      await dispatchDuePushNotifications();
+    } catch (error) {
+      // The task is already saved and the queued job remains available for the cron retry.
+      console.error("Unable to dispatch task push notification immediately.", error);
+    }
   }
 
   await publish(context, saved, deletedIds);
