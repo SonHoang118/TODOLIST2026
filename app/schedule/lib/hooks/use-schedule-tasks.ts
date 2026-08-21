@@ -7,11 +7,14 @@ import type { ScheduleScope, Task } from "../types";
 export function useScheduleTasks(scope: ScheduleScope, ownerId: number | null) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeDataKey, setActiveDataKey] = useState<string | null>(null);
   const skipNextSave = useRef(false);
   const repository = useMemo(() => new ApiScheduleTaskRepository(scope, ownerId), [scope, ownerId]);
+  const requestedDataKey = `${scope}:${ownerId ?? "company"}`;
 
   useEffect(() => {
     if (scope === "USER" && ownerId === null) {
+      setActiveDataKey(null);
       setIsLoading(true);
       return;
     }
@@ -19,9 +22,11 @@ export function useScheduleTasks(scope: ScheduleScope, ownerId: number | null) {
     skipNextSave.current = true;
     if (cachedTasks) {
       setTasks(cachedTasks);
+      setActiveDataKey(requestedDataKey);
       setIsLoading(false);
     } else {
       setTasks([]);
+      setActiveDataKey(requestedDataKey);
       setIsLoading(true);
     }
     let active = true;
@@ -39,7 +44,7 @@ export function useScheduleTasks(scope: ScheduleScope, ownerId: number | null) {
       active = false;
       unsubscribe();
     };
-  }, [ownerId, repository, scope]);
+  }, [ownerId, repository, requestedDataKey, scope]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -52,5 +57,5 @@ export function useScheduleTasks(scope: ScheduleScope, ownerId: number | null) {
     void repository.save(tasks).catch(() => undefined);
   }, [isLoading, repository, tasks]);
 
-  return { tasks, setTasks, isLoading };
+  return { tasks, setTasks, isLoading, isReady: activeDataKey === requestedDataKey };
 }

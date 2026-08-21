@@ -166,7 +166,7 @@ export default function SchedulePage() {
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
-  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks(scheduleScope, authUserId);
+  const { tasks, setTasks, isLoading: isScheduleLoading, isReady: isScheduleDataReady } = useScheduleTasks(scheduleScope, authUserId);
   const { notifications, unreadCount, isMarkingAllRead, isDeletingAll, markAllRead, markRead, deleteAll } = useNotifications(sessionUser?.id ?? null);
   const pushNotifications = usePushNotifications(sessionUser?.id ?? null);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
@@ -1317,7 +1317,7 @@ export default function SchedulePage() {
   };
 
   useLayoutEffect(() => {
-    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading) return;
+    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading || !isScheduleDataReady) return;
     if (scheduleScope !== notificationTaskToFocus.scope || (scheduleScope === "USER" && authUserId !== notificationTaskToFocus.ownerId)) return;
     const task = tasks.find((item) => item.id === notificationTaskToFocus.taskId);
     const container = scrollRef.current;
@@ -1399,7 +1399,7 @@ export default function SchedulePage() {
       };
       notificationScrollFrameRef.current = requestAnimationFrame(animate);
     }, 120);
-  }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
+  }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleDataReady, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
