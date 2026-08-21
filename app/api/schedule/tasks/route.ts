@@ -1,4 +1,5 @@
 import * as Ably from "ably";
+import { after } from "next/server";
 import { sql } from "../../../lib/database";
 import { dispatchDuePushNotifications, queuePushNotification } from "../../../lib/push-notifications";
 import type { ScheduleScope, Task } from "../../../schedule/lib/types";
@@ -181,12 +182,14 @@ export async function PUT(request: Request) {
   }
 
   if (shouldDispatchPush) {
-    try {
-      await dispatchDuePushNotifications();
-    } catch (error) {
-      // The task is already saved and the queued job remains available for the cron retry.
-      console.error("Unable to dispatch task push notification immediately.", error);
-    }
+    after(async () => {
+      try {
+        await dispatchDuePushNotifications();
+      } catch (error) {
+        // The queued job remains available for the cron retry.
+        console.error("Unable to dispatch task push notification after the response.", error);
+      }
+    });
   }
 
   await publish(context, saved, deletedIds);
