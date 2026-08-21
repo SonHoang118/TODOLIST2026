@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-const AUTO_PROMPT_STORAGE_KEY = "dhs-todo:notification-permission-prompted";
+const PERMISSION_INTRO_STORAGE_KEY = "dhs-todo:notification-permission-intro-v2";
 
 function fromBase64Url(value: string): ArrayBuffer {
   const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -16,13 +16,20 @@ export function usePushNotifications(userId: number | null) {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPermissionIntro, setShowPermissionIntro] = useState(false);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      queueMicrotask(() => setPermission("unsupported"));
+      return;
+    }
     void navigator.serviceWorker.register("/sw.js").then(async (registration) => {
       setPermission(Notification.permission);
       const subscription = await registration.pushManager.getSubscription();
       setIsSubscribed(subscription !== null);
+      if (subscription === null && Notification.permission !== "denied" && localStorage.getItem(PERMISSION_INTRO_STORAGE_KEY) !== "true") {
+        setShowPermissionIntro(true);
+      }
     }).catch(() => setError("Không thể khởi tạo thông báo trên thiết bị này."));
   }, [userId]);
 
@@ -49,14 +56,16 @@ export function usePushNotifications(userId: number | null) {
     }
   }, [userId]);
 
-  useEffect(() => {
-    if (userId === null || permission === "checking" || permission === "unsupported" || permission === "denied" || isSubscribed) return;
-    if (localStorage.getItem(AUTO_PROMPT_STORAGE_KEY) === "true") return;
+  const acceptPermissionIntro = useCallback(() => {
+    localStorage.setItem(PERMISSION_INTRO_STORAGE_KEY, "true");
+    setShowPermissionIntro(false);
+    return enable();
+  }, [enable]);
 
-    // Mark it before requesting so React Strict Mode cannot open the prompt twice.
-    localStorage.setItem(AUTO_PROMPT_STORAGE_KEY, "true");
-    queueMicrotask(() => void enable());
-  }, [enable, isSubscribed, permission, userId]);
+  const dismissPermissionIntro = useCallback(() => {
+    localStorage.setItem(PERMISSION_INTRO_STORAGE_KEY, "true");
+    setShowPermissionIntro(false);
+  }, []);
 
   const disable = useCallback(async () => {
     const registration = await navigator.serviceWorker.ready;
@@ -87,5 +96,5 @@ export function usePushNotifications(userId: number | null) {
     }
   }, [permission]);
 
-  return { permission, isSubscribed, isBusy, error, enable, disable, test };
+  return { permission, isSubscribed, isBusy, error, showPermissionIntro, acceptPermissionIntro, dismissPermissionIntro, enable, disable, test };
 }

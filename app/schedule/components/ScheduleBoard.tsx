@@ -1366,6 +1366,29 @@ export default function SchedulePage() {
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
       {isNotificationNavigating && <div className="fixed inset-0 z-[60] cursor-wait" aria-label="Đang điều hướng đến công việc" />}
 
+      {pushNotifications.showPermissionIntro && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-5" role="dialog" aria-modal="true" aria-labelledby="notification-permission-title">
+          <div className={`w-full max-w-sm rounded-2xl border ${th.border} ${th.root} p-5 shadow-2xl`}>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/15 text-2xl" aria-hidden="true">🔔</div>
+            <h2 id="notification-permission-title" className="mt-3 text-center text-lg font-bold">Bật thông báo?</h2>
+            <p className={`mt-2 text-center text-sm leading-5 ${th.subtext}`}>
+              Cho phép DHS To do nhắc bạn về công việc ngay cả khi app đang đóng.
+            </p>
+            <button
+              type="button"
+              onClick={() => void pushNotifications.acceptPermissionIntro()}
+              disabled={pushNotifications.isBusy}
+              className="mt-5 w-full rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-wait disabled:opacity-60"
+            >
+              {pushNotifications.isBusy ? "Đang xử lý..." : "Cho phép thông báo"}
+            </button>
+            <button type="button" onClick={pushNotifications.dismissPermissionIntro} className={`mt-2 w-full rounded-xl px-4 py-2.5 text-sm font-medium ${th.subtext}`}>
+              Để sau
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── App header ───────────────────────────────────────────────────── */}
       <header className={`relative flex items-center gap-1 px-3 py-2 pr-20 ${th.hdrBg} border-b ${th.border} shrink-0`}>
         <button
