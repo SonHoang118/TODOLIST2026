@@ -182,6 +182,8 @@ export default function SchedulePage() {
   const badgeHideTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeShowTimerRef                  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationScrollFrameRef         = useRef<number | null>(null);
+  const notificationScrollStartTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHandledPushNavigationRef         = useRef(false);
   const scheduleSettingsHydratedRef         = useRef(false);
 
@@ -1063,6 +1065,12 @@ export default function SchedulePage() {
       if (badgeShowTimerRef.current) {
         clearTimeout(badgeShowTimerRef.current);
       }
+      if (notificationScrollStartTimerRef.current) {
+        clearTimeout(notificationScrollStartTimerRef.current);
+      }
+      if (notificationScrollFrameRef.current !== null) {
+        cancelAnimationFrame(notificationScrollFrameRef.current);
+      }
     };
   }, []);
 
@@ -1347,10 +1355,7 @@ export default function SchedulePage() {
       ? HEADER_H + ((multiDayTaskLanes.get(task.id) ?? 0) * 36) + 18
       : HEADER_H + task.slotIndex * effSlotH + task.span * effSlotH / 2;
     const targetTop = taskCenterY - container.clientHeight / 2;
-    let hasHighlighted = false;
     const highlightTask = () => {
-      if (hasHighlighted) return;
-      hasHighlighted = true;
       if (notificationHighlightTimerRef.current) clearTimeout(notificationHighlightTimerRef.current);
       setHighlightedNotificationTaskId(task.id);
       notificationHighlightTimerRef.current = setTimeout(() => {
@@ -1359,26 +1364,41 @@ export default function SchedulePage() {
         notificationHighlightTimerRef.current = null;
       }, 560);
     };
-    const startTimer = window.setTimeout(() => {
-      const frame = requestAnimationFrame(() => {
-      container.scrollTo({
-        left: Math.max(0, targetLeft),
-        top: Math.max(0, targetTop),
-        behavior: prefersReducedMotion ? "auto" : "smooth",
-      });
-      container.addEventListener("scrollend", highlightTask, { once: true });
-      // The fallback is only used by browsers without scrollend. Scale it with the
-      // travel distance so it is unlikely to run while a long smooth scroll is active.
-      const scrollDistance = Math.hypot(targetLeft - container.scrollLeft, targetTop - container.scrollTop);
-      window.setTimeout(highlightTask, prefersReducedMotion ? 30 : Math.min(2_500, Math.max(900, scrollDistance * 0.12)));
+    const destinationLeft = Math.max(0, targetLeft);
+    const destinationTop = Math.max(0, targetTop);
+    const startLeft = container.scrollLeft;
+    const startTop = container.scrollTop;
+    const distance = Math.hypot(destinationLeft - startLeft, destinationTop - startTop);
+    const duration = prefersReducedMotion ? 0 : Math.min(900, Math.max(480, distance * 0.16));
+
+    // Detach the navigation request before animating so background task refreshes
+    // cannot restart or interrupt the same journey.
+    if (notificationScrollStartTimerRef.current) clearTimeout(notificationScrollStartTimerRef.current);
+    if (notificationScrollFrameRef.current !== null) cancelAnimationFrame(notificationScrollFrameRef.current);
+    setNotificationTaskToFocus(null);
+    notificationScrollStartTimerRef.current = setTimeout(() => {
+      notificationScrollStartTimerRef.current = null;
       setBadge(`Đang xem: ${task.title}`);
-      setNotificationTaskToFocus(null);
-      });
-      void frame;
-    }, 420);
-    return () => {
-      clearTimeout(startTimer);
-    };
+      if (duration === 0) {
+        container.scrollTo({ left: destinationLeft, top: destinationTop });
+        highlightTask();
+        return;
+      }
+      const startedAt = performance.now();
+      const animate = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / duration);
+        const eased = 1 - Math.pow(1 - progress, 4);
+        container.scrollLeft = startLeft + (destinationLeft - startLeft) * eased;
+        container.scrollTop = startTop + (destinationTop - startTop) * eased;
+        if (progress < 1) {
+          notificationScrollFrameRef.current = requestAnimationFrame(animate);
+        } else {
+          notificationScrollFrameRef.current = null;
+          highlightTask();
+        }
+      };
+      notificationScrollFrameRef.current = requestAnimationFrame(animate);
+    }, 120);
   }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
 
   return (
