@@ -167,7 +167,7 @@ export default function SchedulePage() {
   const [authUserId, setAuthUserId]       = useState<number | null>(null);
   const [authError, setAuthError]         = useState<string | null>(null);
   const [authBusy, setAuthBusy]           = useState(false);
-  const { tasks, setTasks, isLoading: isScheduleLoading, isSaving: isScheduleSaving } = useScheduleTasks(scheduleScope, authUserId);
+  const { tasks, setTasks, isLoading: isScheduleLoading } = useScheduleTasks(scheduleScope, authUserId);
   const { notifications, unreadCount, isMarkingAllRead, isDeletingAll, markAllRead, markRead, deleteAll } = useNotifications(sessionUser?.id ?? null);
   const pushNotifications = usePushNotifications(sessionUser?.id ?? null);
   const avatarInputRef                    = useRef<HTMLInputElement>(null);
@@ -1240,7 +1240,7 @@ export default function SchedulePage() {
   // Saving is deliberately non-blocking: the overlay remains informative, but must not
   // swallow clicks such as a follow-up delete after a drag or resize.
   const isUiLocked = isScheduleLoading || authBusy || isInteractionLocked;
-  const isSyncIndicatorVisible = isUiLocked || isScheduleSaving;
+  const isSyncIndicatorVisible = isUiLocked;
   const gridStrongBorderClass = isCompanySchedule ? "border-rose-500/30" : th.border;
   const gridHalfBorderClass = isCompanySchedule ? "border-rose-500/15" : th.halfBorder;
   const gridDayBorderClass = isCompanySchedule ? "border-rose-500/25" : th.dayBorder;
@@ -2074,7 +2074,7 @@ export default function SchedulePage() {
           className={`absolute inset-0 z-40 transition-opacity duration-300 ${isSyncIndicatorVisible ? "opacity-100" : "opacity-0 pointer-events-none"} ${isUiLocked ? "pointer-events-auto" : "pointer-events-none"}`}
           aria-hidden={!isSyncIndicatorVisible}
         >
-          <div className={`absolute inset-0 ${isScheduleLoading || isScheduleSaving || authBusy ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
+          <div className={`absolute inset-0 ${isScheduleLoading || authBusy ? "bg-zinc-950/60" : "bg-zinc-950/40"} backdrop-blur-[2px]`} />
           <div className="absolute -left-10 top-[22%] h-36 w-36 rounded-full bg-violet-500/25 blur-3xl animate-pulse" />
           <div className="absolute -right-8 top-[38%] h-40 w-40 rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
 
@@ -2089,12 +2089,12 @@ export default function SchedulePage() {
                   <p className="text-sm font-semibold text-white">
                     {isScheduleLoading
                       ? (scheduleScope === "COMPANY" ? "Đang tải lịch công ty" : "Đang tải lịch cá nhân")
-                      : isScheduleSaving || authBusy ? "Đang đồng bộ thay đổi" : "Đang sẵn sàng để thao tác"}
+                      : authBusy ? "Đang đồng bộ thay đổi" : "Đang sẵn sàng để thao tác"}
                   </p>
                   <p className="text-[11px] text-zinc-300">
                     {isScheduleLoading
                       ? "Đồng bộ dữ liệu và dựng timeline..."
-                      : isScheduleSaving || authBusy ? "Đang lưu vào hệ thống chung..." : "Hoàn tất dựng giao diện, khóa chạm nhanh trong giây lát..."}
+                      : authBusy ? "Đang lưu vào hệ thống chung..." : "Hoàn tất dựng giao diện, khóa chạm nhanh trong giây lát..."}
                   </p>
                 </div>
               </div>

@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 
 type UserRow = { id: string | number; name: string; role: "ADMIN" | "STAFF"; avatar: string };
 
-async function ensureUsersTable(): Promise<void> {
+let usersTableReady: Promise<void> | null = null;
+
+async function setupUsersTable(): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS schedule_users (
     id BIGINT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -20,6 +22,11 @@ async function ensureUsersTable(): Promise<void> {
     (2, 'Nhân viên A', 'STAFF'),
     (3, 'Nhân viên B', 'STAFF')
     ON CONFLICT (id) DO NOTHING`;
+}
+
+async function ensureUsersTable(): Promise<void> {
+  usersTableReady ??= setupUsersTable().catch((error) => { usersTableReady = null; throw error; });
+  await usersTableReady;
 }
 
 function toUser(row: UserRow): SessionUser {

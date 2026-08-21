@@ -39,14 +39,16 @@ function channelName(context: { scope: ScheduleScope; ownerId: number | null }):
   return context.scope === "COMPANY" ? "schedule:company" : `schedule:user:${context.ownerId}`;
 }
 
-async function publishCommentChange(context: { scope: ScheduleScope; ownerId: number | null }, taskId: number): Promise<void> {
+async function publishCommentChange(context: { scope: ScheduleScope; ownerId: number | null }, event: { taskId: number; comment?: TaskComment; deletedId?: number }): Promise<void> {
   const key = process.env.ABLY_API_KEY;
   if (!key) return;
   const client = new Ably.Rest(key);
-  await client.channels.get(channelName(context)).publish("comments.changed", { taskId });
+  await client.channels.get(channelName(context)).publish("comments.changed", event);
 }
 
-async function ensureTables() {
+let tablesReady: Promise<void> | null = null;
+
+async function setupTables() {
   await sql`CREATE TABLE IF NOT EXISTS schedule_task_entries (
     scope_key TEXT NOT NULL, id BIGINT NOT NULL, data JSONB NOT NULL,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -64,6 +66,11 @@ async function ensureTables() {
     FOREIGN KEY (scope_key, task_id) REFERENCES schedule_task_entries(scope_key, id) ON DELETE CASCADE
   )`;
   await sql`CREATE INDEX IF NOT EXISTS schedule_task_comments_task_idx ON schedule_task_comments(scope_key, task_id, created_at DESC)`;
+}
+
+async function ensureTables(): Promise<void> {
+  tablesReady ??= setupTables().catch((error) => { tablesReady = null; throw error; });
+  await tablesReady;
 }
 
 function toComment(row: CommentRow): TaskComment {
@@ -111,11 +118,13 @@ export async function POST(request: Request) {
   const rows = await sql`INSERT INTO schedule_task_comments (scope_key, task_id, author_user_id, author_name, author_avatar, content)
     VALUES (${context.scopeKey}, ${body.taskId}, ${body.authorUserId}, ${users[0].name}, ${users[0].avatar}, ${content})
     RETURNING id, task_id, author_user_id, author_name, author_avatar, content, created_at` as CommentRow[];
-  try {
-    await publishCommentChange(context, body.taskId!);
-  } catch (error) {
-    console.error("Unable to publish comment change.", error);
-  }
+  after(async () => {
+    try {
+      await publishCommentChange(context, { taskId: body.taskId!, comment: toComment(rows[0]!) });
+    } catch (error) {
+      console.error("Unable to publish comment change.", error);
+    }
+  });
   const recipients = relatedUserIds(task, context, body.authorUserId!);
   if (recipients.length > 0) {
     const title = `Tin nhắn mới trong: ${task.title}`;
@@ -157,10 +166,12 @@ export async function DELETE(request: Request) {
     WHERE id = ${body.commentId} AND scope_key = ${context.scopeKey} AND task_id = ${body.taskId} AND author_user_id = ${body.authorUserId}
     RETURNING id` as Array<{ id: string | number }>;
   if (!deleted[0]) return Response.json({ error: "Comment not found or cannot be deleted." }, { status: 404 });
-  try {
-    await publishCommentChange(context, body.taskId!);
-  } catch (error) {
-    console.error("Unable to publish comment deletion.", error);
-  }
+  after(async () => {
+    try {
+      await publishCommentChange(context, { taskId: body.taskId!, deletedId: Number(deleted[0].id) });
+    } catch (error) {
+      console.error("Unable to publish comment deletion.", error);
+    }
+  });
   return Response.json({ deletedId: Number(deleted[0].id) });
 }

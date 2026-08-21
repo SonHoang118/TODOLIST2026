@@ -93,6 +93,8 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   const [deletingCommentId, setDeletingCommentId] = useState<number | null>(null);
   const [newCommentId, setNewCommentId] = useState<number | null>(null);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const onCommentCountChangeRef = useRef(onCommentCountChange);
+  onCommentCountChangeRef.current = onCommentCountChange;
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
@@ -171,10 +173,6 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
       setCommenters(next);
       setCommentError(null);
     };
-    const refresh = () => void loadComments().catch((error: unknown) => {
-      if (active) setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
-    });
-
     void loadComments().catch((error: unknown) => {
       if (active) setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
     }).finally(() => {
@@ -184,15 +182,22 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
     const client = new Ably.Realtime({ authUrl: "/api/realtime/token" });
     const channel = client.channels.get(scheduleScope === "COMPANY" ? "schedule:company" : `schedule:user:${scheduleOwnerId}`);
     const onCommentChanged = (message: Ably.Message) => {
-      const event = message.data as { taskId?: number } | null;
-      if (event?.taskId === task.id) refresh();
+      const event = message.data as { taskId?: number; comment?: TaskComment; deletedId?: number } | null;
+      if (event?.taskId !== task.id) return;
+      setCommenters((current) => {
+        let next = current;
+        if (event.deletedId !== undefined) next = current.filter((comment) => comment.id !== event.deletedId);
+        if (event.comment) next = current.some((comment) => comment.id === event.comment!.id)
+          ? current.map((comment) => comment.id === event.comment!.id ? event.comment! : comment)
+          : [event.comment, ...current];
+        if (next !== current) onCommentCountChangeRef.current(next.length);
+        return next;
+      });
     };
     channel.subscribe("comments.changed", onCommentChanged);
-    const pollId = window.setInterval(refresh, 2_000);
 
     return () => {
       active = false;
-      window.clearInterval(pollId);
       void channel.unsubscribe("comments.changed", onCommentChanged);
       client.close();
     };

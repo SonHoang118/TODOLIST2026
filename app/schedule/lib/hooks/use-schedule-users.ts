@@ -11,12 +11,21 @@ async function loadUsers(): Promise<SessionUser[]> {
 }
 
 export function useScheduleUsers() {
-  const [users, setUsers] = useState<SessionUser[]>([]);
+  const [users, setUsers] = useState<SessionUser[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const cached = JSON.parse(localStorage.getItem("dhs-todo:users-cache") ?? "[]") as SessionUser[];
+      return Array.isArray(cached) ? cached : [];
+    } catch { return []; }
+  });
 
   useEffect(() => {
     let active = true;
     const apply = (next: SessionUser[]) => {
-      if (active) setUsers(next);
+      if (active) {
+        setUsers(next);
+        try { localStorage.setItem("dhs-todo:users-cache", JSON.stringify(next)); } catch {}
+      }
     };
     void loadUsers().then(apply).catch(() => undefined);
 

@@ -16,7 +16,9 @@ type StoredRow = { id: string | number; data: Task | string; version: number; up
 type TaskContext = { scope?: ScheduleScope; ownerId?: number | null };
 type MutationBody = TaskContext & { changes?: Task[]; deletedIds?: number[] };
 
-async function ensureTable(): Promise<void> {
+let tablesReady: Promise<void> | null = null;
+
+async function setupTables(): Promise<void> {
   await sql`CREATE TABLE IF NOT EXISTS schedule_task_entries (
     scope_key TEXT NOT NULL,
     id BIGINT NOT NULL,
@@ -40,6 +42,11 @@ async function ensureTable(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS schedule_task_comments_task_idx ON schedule_task_comments(scope_key, task_id, created_at DESC)`;
   await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_scope TEXT`;
   await sql`ALTER TABLE schedule_notifications ADD COLUMN IF NOT EXISTS task_owner_user_id BIGINT`;
+}
+
+async function ensureTable(): Promise<void> {
+  tablesReady ??= setupTables().catch((error) => { tablesReady = null; throw error; });
+  await tablesReady;
 }
 
 function parseContext(value: TaskContext): { scope: ScheduleScope; ownerId: number | null; scopeKey: string } | null {
@@ -230,6 +237,12 @@ export async function PUT(request: Request) {
     });
   }
 
-  await publish(context, saved, deletedIds);
+  after(async () => {
+    try {
+      await publish(context, saved, deletedIds);
+    } catch (error) {
+      console.error("Unable to publish task change.", error);
+    }
+  });
   return Response.json({ tasks: saved, deletedIds });
 }
