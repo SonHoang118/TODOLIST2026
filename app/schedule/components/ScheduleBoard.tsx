@@ -151,8 +151,7 @@ export default function SchedulePage() {
   const [bulkDeleteAfterDate, setBulkDeleteAfterDate] = useState(() => absDayToDateInput(dateToAbsDay(new Date())));
   const [settingsOpen, setSettingsOpen]   = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null; requiresLoad: boolean } | null>(null);
-  const [hasObservedNotificationLoad, setHasObservedNotificationLoad] = useState(false);
+  const [notificationTaskToFocus, setNotificationTaskToFocus] = useState<{ taskId: number; scope: ScheduleScope; ownerId: number | null } | null>(null);
   const [highlightedNotificationTaskId, setHighlightedNotificationTaskId] = useState<number | null>(null);
   const [isNotificationNavigating, setIsNotificationNavigating] = useState(false);
   const [infiniteScroll, setInfiniteScroll] = useState(true);
@@ -1088,11 +1087,9 @@ export default function SchedulePage() {
     }
 
     hasHandledPushNavigationRef.current = true;
-    const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
     setIsNotificationNavigating(true);
-    setHasObservedNotificationLoad(false);
     setViewMode("SCHEDULE");
-    setNotificationTaskToFocus({ taskId, scope: targetScope, ownerId: targetOwnerId, requiresLoad });
+    setNotificationTaskToFocus({ taskId, scope: targetScope, ownerId: targetOwnerId });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
     if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
     if (!infiniteScroll) setInfiniteScroll(true);
@@ -1304,23 +1301,16 @@ export default function SchedulePage() {
     setIsNotificationNavigating(true);
     setNotificationsOpen(false);
 
-    const requiresLoad = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
-    setHasObservedNotificationLoad(false);
     setViewMode("SCHEDULE");
-    setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null, requiresLoad });
+    setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
     if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
     if (!infiniteScroll) setInfiniteScroll(true);
   };
 
-  useEffect(() => {
-    if (notificationTaskToFocus?.requiresLoad && isScheduleLoading) setHasObservedNotificationLoad(true);
-  }, [isScheduleLoading, notificationTaskToFocus?.requiresLoad]);
-
   useLayoutEffect(() => {
     if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading) return;
     if (scheduleScope !== notificationTaskToFocus.scope || (scheduleScope === "USER" && authUserId !== notificationTaskToFocus.ownerId)) return;
-    if (notificationTaskToFocus.requiresLoad && !hasObservedNotificationLoad) return;
     const task = tasks.find((item) => item.id === notificationTaskToFocus.taskId);
     const container = scrollRef.current;
     if (!task || !container) {
@@ -1389,11 +1379,11 @@ export default function SchedulePage() {
     return () => {
       clearTimeout(startTimer);
     };
-  }, [authUserId, dayWidth, effSlotH, hasObservedNotificationLoad, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
+  }, [authUserId, dayWidth, effSlotH, infiniteScroll, isMultiDayLaneExpanded, isScheduleLoading, multiDayTaskLanes, notificationTaskToFocus, scheduleScope, tasks, viewMode, viewStartAbsDay]);
 
   return (
     <div className={`flex flex-col h-dvh ${th.root} select-none overflow-hidden`} aria-busy={isNotificationNavigating}>
-      {isNotificationNavigating && <div className="fixed inset-0 z-[60] cursor-wait" aria-label="Đang điều hướng đến công việc" />}
+      {isNotificationNavigating && <div className="pointer-events-none fixed inset-0 z-[60] cursor-wait" aria-label="Đang điều hướng đến công việc" />}
 
       {pushNotifications.showPermissionIntro && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 px-5" role="dialog" aria-modal="true" aria-labelledby="notification-permission-title">
