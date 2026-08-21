@@ -1611,7 +1611,11 @@ export default function SchedulePage() {
                     <div
                       key={task.id}
                       data-task-id={task.id}
-                    className={`absolute z-10 rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""} ${backgroundClass} ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : ""}`}
+                      onClick={(event) => {
+                        if ((event.target as HTMLElement).closest("[data-action]")) return;
+                        setReviewTaskId(task.id);
+                      }}
+                    className={`absolute z-10 cursor-pointer rounded-lg text-left text-[10px] font-semibold text-white shadow-sm transition hover:brightness-110 ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""} ${backgroundClass} ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : ""}`}
                       style={{ left, top: lane * 36 + 5, width, height: 27, backgroundColor }}
                     >
                       <div
@@ -1637,7 +1641,10 @@ export default function SchedulePage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => setReviewTaskId(task.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setReviewTaskId(task.id);
+                          }}
                           className="min-w-0 flex-1 text-left"
                           title={`${task.title}: ${slotLabel(task.slotIndex)} → ${slotLabel(getMultiDayEndSlot(task))}`}
                         >
@@ -1812,7 +1819,11 @@ export default function SchedulePage() {
                     key={task.id}
                     ref={el => { if (el) taskEls.current.set(task.id, el); else taskEls.current.delete(task.id); }}
                     data-task-id={task.id}
-                    className={`absolute overflow-hidden ${taskAnimationClass} ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""} ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : ""}`}
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest("[data-action], [data-resize-handle]")) return;
+                      setReviewTaskId(task.id);
+                    }}
+                    className={`absolute cursor-pointer overflow-hidden ${taskAnimationClass} ${highlightedNotificationTaskId === task.id ? "schedule-task-highlight" : ""} ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : ""}`}
                     style={{
                       left:       colIdx * dayWidth + 2,
                       top:        task.slotIndex * effSlotH,
