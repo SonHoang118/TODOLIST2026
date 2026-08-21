@@ -2118,9 +2118,9 @@ export default function SchedulePage() {
                 <p className={`mt-1 text-xs ${th.subtext}`}>Các cập nhật về công việc và lịch công ty sẽ xuất hiện ở đây.</p>
               </div>
             ) : notifications.map((notification: AppNotification) => {
-              const icon = notification.kind === "ASSIGNED" ? "↳" : notification.kind === "ACCEPTED" ? "✓" : notification.kind === "COMPLETED" ? "✓" : notification.kind === "COMPANY_CREATED" ? "+" : "✓";
-              const iconColor = notification.kind === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : notification.kind === "COMPANY_CREATED" ? "bg-sky-500/20 text-sky-400" : "bg-violet-500/20 text-violet-400";
-              const borderColor = notification.kind === "ASSIGNED" ? "border-violet-500/50" : notification.kind === "ACCEPTED" ? "border-amber-500/50" : notification.kind === "COMPLETED" ? "border-emerald-500/50" : notification.kind === "COMPANY_CREATED" ? "border-sky-500/50" : "border-rose-500/50";
+              const icon = notification.kind === "ASSIGNED" ? "↳" : notification.kind === "COMMENTED" ? "✉" : notification.kind === "ACCEPTED" ? "✓" : notification.kind === "COMPLETED" ? "✓" : notification.kind === "COMPANY_CREATED" ? "+" : "✓";
+              const iconColor = notification.kind === "COMMENTED" ? "bg-cyan-500/20 text-cyan-400" : notification.kind === "COMPLETED" ? "bg-emerald-500/20 text-emerald-400" : notification.kind === "COMPANY_CREATED" ? "bg-sky-500/20 text-sky-400" : "bg-violet-500/20 text-violet-400";
+              const borderColor = notification.kind === "COMMENTED" ? "border-cyan-500/50" : notification.kind === "ASSIGNED" ? "border-violet-500/50" : notification.kind === "ACCEPTED" ? "border-amber-500/50" : notification.kind === "COMPLETED" ? "border-emerald-500/50" : notification.kind === "COMPANY_CREATED" ? "border-sky-500/50" : "border-rose-500/50";
               const actor = usersForAuth.find((user) => user.name === notification.actorName);
               const actorInitial = (notification.actorName ?? "H").trim().charAt(0).toUpperCase() || "H";
               const canOpenTask = notification.taskId !== null;

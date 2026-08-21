@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { sql } from "../../../lib/database";
-import type { ScheduleScope, TaskComment } from "../../../schedule/lib/types";
+import { dispatchDuePushNotifications, queuePushNotification } from "../../../lib/push-notifications";
+import type { ScheduleScope, Task, TaskComment } from "../../../schedule/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +16,22 @@ type CommentRow = {
   created_at: string | Date;
 };
 
-function parseContext(value: { scope?: unknown; ownerId?: unknown }) {
-  if (value.scope === "COMPANY") return { scopeKey: "COMPANY" };
+function parseContext(value: { scope?: unknown; ownerId?: unknown }): { scope: ScheduleScope; ownerId: number | null; scopeKey: string } | null {
+  if (value.scope === "COMPANY") return { scope: "COMPANY", ownerId: null, scopeKey: "COMPANY" };
   const ownerId = Number(value.ownerId);
-  if (value.scope === "USER" && Number.isSafeInteger(ownerId) && ownerId > 0) return { scopeKey: `USER:${ownerId}` };
+  if (value.scope === "USER" && Number.isSafeInteger(ownerId) && ownerId > 0) return { scope: "USER", ownerId, scopeKey: `USER:${ownerId}` };
   return null;
+}
+
+function relatedUserIds(task: Task, context: { scope: ScheduleScope; ownerId: number | null }, authorUserId: number): number[] {
+  const ids = context.scope === "COMPANY"
+    ? [task.createdByUserId, ...task.confirmedByUserIds]
+    : [context.ownerId, task.createdByUserId];
+  return [...new Set(ids.filter((id): id is number => Number.isSafeInteger(id) && id !== null && id > 0 && id !== authorUserId))];
+}
+
+function commentPreview(content: string): string {
+  return content.length > 120 ? `${content.slice(0, 117)}...` : content;
 }
 
 async function ensureTables() {
@@ -80,11 +93,34 @@ export async function POST(request: Request) {
   await ensureTables();
   const users = await sql`SELECT name, avatar FROM schedule_users WHERE id = ${body.authorUserId} LIMIT 1` as Array<{ name: string; avatar: string }>;
   if (!users[0]) return Response.json({ error: "User not found." }, { status: 404 });
-  const tasks = await sql`SELECT id FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${body.taskId} LIMIT 1` as Array<{ id: string | number }>;
+  const tasks = await sql`SELECT id, data FROM schedule_task_entries WHERE scope_key = ${context.scopeKey} AND id = ${body.taskId} LIMIT 1` as Array<{ id: string | number; data: Task | string }>;
   if (!tasks[0]) return Response.json({ error: "Task not found." }, { status: 404 });
+  const task = typeof tasks[0].data === "string" ? JSON.parse(tasks[0].data) as Task : tasks[0].data;
   const rows = await sql`INSERT INTO schedule_task_comments (scope_key, task_id, author_user_id, author_name, author_avatar, content)
     VALUES (${context.scopeKey}, ${body.taskId}, ${body.authorUserId}, ${users[0].name}, ${users[0].avatar}, ${content})
     RETURNING id, task_id, author_user_id, author_name, author_avatar, content, created_at` as CommentRow[];
+  const recipients = relatedUserIds(task, context, body.authorUserId!);
+  if (recipients.length > 0) {
+    const title = `Tin nhắn mới trong: ${task.title}`;
+    const notificationBody = `${users[0].name}: ${commentPreview(content)}`;
+    await Promise.all(recipients.map((recipientUserId) => queuePushNotification(recipientUserId, {
+      title,
+      body: notificationBody,
+      url: "/schedule",
+      kind: "COMMENTED",
+      actorName: users[0].name,
+      taskId: body.taskId!,
+      taskScope: context.scope,
+      taskOwnerUserId: context.ownerId,
+    }, 0)));
+    after(async () => {
+      try {
+        await dispatchDuePushNotifications();
+      } catch (error) {
+        console.error("Unable to dispatch comment push notification after the response.", error);
+      }
+    });
+  }
   return Response.json(toComment(rows[0]!), { status: 201 });
 }
 

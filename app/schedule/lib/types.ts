@@ -49,7 +49,7 @@ export type TaskStatus = "PENDING" | "IN_PROGRESS" | "DONE";
 export type TaskLabelValue = "DEFAULT" | "PERSONAL";
 export type ScheduleScope = "USER" | "COMPANY";
 
-export type NotificationKind = "ASSIGNED" | "ACCEPTED" | "COMPLETED" | "COMPANY_CREATED" | "COMPANY_CONFIRMED";
+export type NotificationKind = "ASSIGNED" | "ACCEPTED" | "COMPLETED" | "COMPANY_CREATED" | "COMPANY_CONFIRMED" | "COMMENTED";
 
 export interface AppNotification {
   id: number;
