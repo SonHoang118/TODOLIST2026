@@ -3,19 +3,20 @@
 import { absDayToDate, dayShortOf, slotLabel } from "../lib/date";
 import { getMultiDayEndSlot, isMultiDayTask } from "../lib/multi-day";
 import { isTaskOverdue, isTaskReadOnly } from "../lib/domain/task";
-import type { ScheduleTheme, Task } from "../lib/types";
+import type { ScheduleTheme, SessionUser, Task } from "../lib/types";
 
 interface TodayTaskListProps {
   tasks: Task[];
   todayAbsDay: number;
   isCompanySchedule: boolean;
+  viewingUser: SessionUser | null;
   theme: ScheduleTheme;
   onComplete: (taskId: number) => void;
   onEdit: (taskId: number) => void;
   onRemove: (taskId: number) => void;
 }
 
-export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, onComplete, onEdit, onRemove }: TodayTaskListProps) {
+export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, viewingUser, theme, onComplete, onEdit, onRemove }: TodayTaskListProps) {
   const todayTasks = tasks
     .filter((task) => task.absDay <= todayAbsDay && (task.endAbsDay ?? task.absDay) >= todayAbsDay)
     .sort((first, second) => first.slotIndex - second.slotIndex);
@@ -30,7 +31,18 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
           <div className="mt-2 flex items-end justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold">{dayShortOf(today)}, {today.toLocaleDateString("vi-VN")}</h1>
-              <p className="mt-1 text-sm text-violet-100">Timeline công việc trong ngày của bạn.</p>
+              {isCompanySchedule ? (
+                <p className="mt-1 text-sm font-semibold text-violet-100">DHStudio</p>
+              ) : viewingUser ? (
+                <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-violet-100">
+                  {viewingUser.avatar ? (
+                    <img src={viewingUser.avatar} alt={viewingUser.name} className="h-6 w-6 rounded-full border border-white/40 object-cover" />
+                  ) : (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold">{viewingUser.name.trim().charAt(0).toUpperCase()}</span>
+                  )}
+                  <span>{viewingUser.name}</span>
+                </div>
+              ) : null}
             </div>
             <div className="rounded-2xl bg-white/15 px-3 py-2 text-right backdrop-blur-sm">
               <p className="text-xl font-bold tabular-nums">{completedCount}/{todayTasks.length}</p>
@@ -55,24 +67,25 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, theme, on
               const time = isMultiDay
                 ? `${absDayToDate(task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(task.slotIndex)} → ${absDayToDate(task.endAbsDay ?? task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(getMultiDayEndSlot(task))}`
                 : `${slotLabel(task.slotIndex)} – ${slotLabel(task.slotIndex + task.span)}`;
+              const canComplete = !isCompanySchedule && !isReadOnly;
               return (
-                <article key={task.id} className={`schedule-list-card group relative rounded-2xl border ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : theme.border} ${theme.hdrBg} p-4 ${isOverdue ? "pb-7" : ""} shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
+                <article key={task.id} onClick={() => { if (canComplete) onComplete(task.id); }} className={`schedule-list-card group relative rounded-2xl border ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : theme.border} ${theme.hdrBg} p-4 ${isOverdue ? "pb-7" : ""} ${canComplete ? "cursor-pointer" : ""} shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
                   <div className="flex items-start gap-3">
-                    {!isOverdue && <button type="button" disabled={isCompanySchedule || isReadOnly} onClick={() => { if (!isReadOnly) onComplete(task.id); }} aria-label={isDone ? (isReadOnly ? "Đã hoàn thành" : "Bỏ hoàn thành") : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-400 bg-emerald-500 text-white` : "border-zinc-500 hover:border-violet-400"} ${isCompanySchedule ? "cursor-not-allowed opacity-50" : ""}`}>{isDone && "✓"}</button>}
+                    {!isOverdue && <button type="button" disabled={!canComplete} onClick={(event) => { event.stopPropagation(); if (canComplete) onComplete(task.id); }} aria-label={isDone ? (isReadOnly ? "Đã hoàn thành" : "Bỏ hoàn thành") : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-400 bg-emerald-500 text-white` : "border-zinc-500 hover:border-violet-400"} ${isCompanySchedule ? "cursor-not-allowed opacity-50" : ""}`}>{isDone && "✓"}</button>}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className={`font-semibold ${isDone ? "text-zinc-500 line-through" : ""}`}>{task.title}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isDone ? "bg-emerald-500/15 text-emerald-500" : task.status === "PENDING" ? "bg-amber-500/15 text-amber-500" : "bg-sky-500/15 text-sky-500"}`}>{isDone ? "DONE" : task.status === "PENDING" ? "CHỜ" : "ĐANG LÀM"}</span>
                       </div>
-                      {task.description && <p className={`mt-1 line-clamp-2 text-sm ${theme.subtext}`}>{task.description}</p>}
-                      <div className={`mt-3 flex items-center gap-2 text-xs font-medium ${theme.subtext}`}>
-                        <span className="rounded-lg bg-black/5 px-2 py-1 tabular-nums dark:bg-white/5">◷ {time}</span>
-                        <span>{isMultiDay ? "Nhiều ngày" : `${task.span * 30} phút`}</span>
+                      {task.description && <p className={`mt-1 whitespace-pre-wrap break-words text-sm ${theme.subtext}`}>{task.description}</p>}
+                      <div className={`mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap text-xs font-medium ${theme.subtext}`}>
+                        <span className="shrink-0 rounded-lg bg-black/5 px-2 py-1 tabular-nums dark:bg-white/5">◷ {time}</span>
+                        <span className="shrink-0">{isMultiDay ? "Nhiều ngày" : `${task.span * 30} phút`}</span>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100">
-                      {!isReadOnly && <button type="button" onClick={() => onEdit(task.id)} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>}
-                      <button type="button" onClick={() => onRemove(task.id)} className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-500/20">Xóa</button>
+                      {!isReadOnly && <button type="button" onClick={(event) => { event.stopPropagation(); onEdit(task.id); }} className={`rounded-lg px-2 py-1.5 text-xs font-semibold ${theme.btnSecondary}`}>Sửa</button>}
+                      <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(task.id); }} className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-500/20">Xóa</button>
                     </div>
                   </div>
                   {isOverdue && <div className={`absolute bottom-0 left-0 right-0 rounded-b-xl py-1 text-center text-[10px] font-bold text-white ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "ĐÃ HẾT HẠN" : "QUÁ HẠN"}</div>}

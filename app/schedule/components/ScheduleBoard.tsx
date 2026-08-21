@@ -1493,6 +1493,7 @@ export default function SchedulePage() {
           tasks={tasks}
           todayAbsDay={todayAbsDay}
           isCompanySchedule={isCompanySchedule}
+          viewingUser={usersForAuth.find((user) => user.id === authUserId) ?? null}
           theme={th}
           onComplete={(taskId) => applyTaskAction("complete", taskId)}
           onEdit={(taskId) => applyTaskAction("edit", taskId)}
