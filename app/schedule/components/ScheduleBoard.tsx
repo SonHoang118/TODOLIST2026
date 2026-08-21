@@ -43,6 +43,7 @@ type RgbColor = { r: number; g: number; b: number };
 const DEFAULT_TODAY_COLUMN_COLOR = "#2E1065";
 const TODAY_COLUMN_COLOR_STORAGE_KEY = "dhs-todo-today-column-color";
 const SCHEDULE_SETTINGS_STORAGE_KEY = "dhs-todo-schedule-settings";
+const COMPANY_CALENDAR_AVATAR = "https://res.cloudinary.com/dbwtitpvi/image/upload/v1787320357/logo2_a2niqo.jpg";
 
 type StoredScheduleSettings = {
   isDark?: boolean;
@@ -141,6 +142,7 @@ export default function SchedulePage() {
   const [editStatus, setEditStatus]       = useState<TaskStatus>("PENDING");
   const [badge, setBadge]                 = useState<string | null>(null);
   const [displayBadge, setDisplayBadge]   = useState<string | null>(null);
+  const [badgeAvatar, setBadgeAvatar]     = useState<{ name: string; url: string | null } | null>(null);
   const [isBadgeVisible, setIsBadgeVisible] = useState(false);
   const [zoomLevel, setZoomLevel]          = useState(1);
   const [dayWidth, setDayWidth]           = useState(DAY_W);
@@ -184,6 +186,7 @@ export default function SchedulePage() {
   const notificationHighlightTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const notificationScrollFrameRef         = useRef<number | null>(null);
   const notificationScrollStartTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationCalendarBadgeRef       = useRef<{ name: string; url: string | null } | null>(null);
   const hasHandledPushNavigationRef         = useRef(false);
   const scheduleSettingsHydratedRef         = useRef(false);
 
@@ -1014,7 +1017,10 @@ export default function SchedulePage() {
 
   useEffect(() => {
     if (!badge) return;
-    const t = setTimeout(() => setBadge(null), 2500);
+    const t = setTimeout(() => {
+      setBadge(null);
+      setBadgeAvatar(null);
+    }, 2500);
     return () => clearTimeout(t);
   }, [badge]);
 
@@ -1095,6 +1101,15 @@ export default function SchedulePage() {
     }
 
     hasHandledPushNavigationRef.current = true;
+    const changesCalendar = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
+    notificationCalendarBadgeRef.current = changesCalendar
+      ? targetScope === "COMPANY"
+        ? { name: "DHStudio", url: COMPANY_CALENDAR_AVATAR }
+        : (() => {
+            const owner = usersForAuth.find((user) => user.id === targetOwnerId);
+            return { name: owner?.name ?? "lịch cá nhân", url: owner?.avatar || null };
+          })()
+      : null;
     setIsNotificationNavigating(true);
     setViewMode("SCHEDULE");
     setNotificationTaskToFocus({ taskId, scope: targetScope, ownerId: targetOwnerId });
@@ -1121,6 +1136,7 @@ export default function SchedulePage() {
 
     const selected = usersForAuth.find((u) => u.id === nextUserId);
     if (selected) {
+      setBadgeAvatar(null);
       setBadge(`Đang xem lịch của ${selected.name}`);
     }
   };
@@ -1135,6 +1151,7 @@ export default function SchedulePage() {
       setEditingId(null);
     });
 
+    setBadgeAvatar(null);
     setBadge(nextScope === "COMPANY" ? "Đang xem lịch công ty" : "Đang xem lịch cá nhân");
   };
 
@@ -1306,6 +1323,15 @@ export default function SchedulePage() {
 
     // Start navigating immediately. A server check is only needed if the loaded
     // schedule cannot find the task.
+    const changesCalendar = targetScope !== scheduleScope || (targetScope === "USER" && targetOwnerId !== authUserId);
+    notificationCalendarBadgeRef.current = changesCalendar
+      ? targetScope === "COMPANY"
+        ? { name: "DHStudio", url: COMPANY_CALENDAR_AVATAR }
+        : (() => {
+            const owner = usersForAuth.find((user) => user.id === targetOwnerId);
+            return { name: owner?.name ?? "lịch cá nhân", url: owner?.avatar || null };
+          })()
+      : null;
     setIsNotificationNavigating(true);
     setNotificationsOpen(false);
 
@@ -1378,7 +1404,15 @@ export default function SchedulePage() {
     setNotificationTaskToFocus(null);
     notificationScrollStartTimerRef.current = setTimeout(() => {
       notificationScrollStartTimerRef.current = null;
-      setBadge(`Đang xem: ${task.title}`);
+      const calendarBadge = notificationCalendarBadgeRef.current;
+      if (calendarBadge) {
+        setBadgeAvatar(calendarBadge);
+        setBadge(`Đang xem lịch của ${calendarBadge.name}`);
+        notificationCalendarBadgeRef.current = null;
+      } else {
+        setBadgeAvatar(null);
+        setBadge(`Đang xem: ${task.title}`);
+      }
       if (duration === 0) {
         container.scrollTo({ left: destinationLeft, top: destinationTop });
         highlightTask();
@@ -1461,7 +1495,10 @@ export default function SchedulePage() {
           <div
             className={`overflow-hidden transition-all duration-300 ease-out ${isBadgeVisible ? "max-h-6 opacity-100 translate-y-0 mt-0.5" : "max-h-0 opacity-0 -translate-y-1 mt-0"}`}
           >
-            <p className="text-[10px] text-violet-400 truncate">{displayBadge ?? ""}</p>
+            <div className="flex min-w-0 items-center justify-center gap-1.5 text-[10px] text-violet-400">
+              {badgeAvatar && <TaskAvatar name={badgeAvatar.name} avatar={badgeAvatar.url} size="xs" />}
+              <p className="truncate">{displayBadge ?? ""}</p>
+            </div>
           </div>
         </div>
 
