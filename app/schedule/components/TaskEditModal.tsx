@@ -1,5 +1,6 @@
 "use client";
 
+import * as Ably from "ably";
 import { useEffect, useRef, useState } from "react";
 import { HexColorPicker } from "react-colorful";
 import { SLOTS, STATUS_LABEL } from "../lib/constants";
@@ -118,8 +119,11 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
       });
       if (!response.ok) throw new Error("Không thể gửi bình luận.");
       const savedComment = await response.json() as TaskComment;
-      setCommenters((current) => [savedComment, ...current]);
-      onCommentCountChange(commenters.length + 1);
+      setCommenters((current) => {
+        const next = current.some((comment) => comment.id === savedComment.id) ? current : [savedComment, ...current];
+        onCommentCountChange(next.length);
+        return next;
+      });
       setNewCommentId(savedComment.id);
       setCommentDraft("");
       setCommentsOpen(true);
@@ -141,8 +145,11 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
         body: JSON.stringify({ scope: scheduleScope, ownerId: scheduleOwnerId, taskId: task.id, commentId, authorUserId: currentUser.id }),
       });
       if (!response.ok) throw new Error("Không thể xóa bình luận.");
-      setCommenters((current) => current.filter((comment) => comment.id !== commentId));
-      onCommentCountChange(Math.max(0, commenters.length - 1));
+      setCommenters((current) => {
+        const next = current.filter((comment) => comment.id !== commentId);
+        onCommentCountChange(next.length);
+        return next;
+      });
     } catch (error) {
       setCommentError(error instanceof Error ? error.message : "Không thể xóa bình luận.");
     } finally {
@@ -151,22 +158,42 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   };
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
     const params = new URLSearchParams({ scope: scheduleScope, taskId: String(task.id) });
     if (scheduleScope === "USER" && scheduleOwnerId !== null) params.set("ownerId", String(scheduleOwnerId));
-    void fetch(`/api/schedule/comments?${params}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Không thể tải bình luận.");
-        setCommenters(await response.json() as TaskComment[]);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setCommentsLoading(false);
-      });
-    return () => controller.abort();
+    const loadComments = async () => {
+      const response = await fetch(`/api/schedule/comments?${params}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Không thể tải bình luận.");
+      const next = await response.json() as TaskComment[];
+      if (!active) return;
+      setCommenters(next);
+      setCommentError(null);
+    };
+    const refresh = () => void loadComments().catch((error: unknown) => {
+      if (active) setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
+    });
+
+    void loadComments().catch((error: unknown) => {
+      if (active) setCommentError(error instanceof Error ? error.message : "Không thể tải bình luận.");
+    }).finally(() => {
+      if (active) setCommentsLoading(false);
+    });
+
+    const client = new Ably.Realtime({ authUrl: "/api/realtime/token" });
+    const channel = client.channels.get(scheduleScope === "COMPANY" ? "schedule:company" : `schedule:user:${scheduleOwnerId}`);
+    const onCommentChanged = (message: Ably.Message) => {
+      const event = message.data as { taskId?: number } | null;
+      if (event?.taskId === task.id) refresh();
+    };
+    channel.subscribe("comments.changed", onCommentChanged);
+    const pollId = window.setInterval(refresh, 2_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(pollId);
+      void channel.unsubscribe("comments.changed", onCommentChanged);
+      client.close();
+    };
   }, [scheduleOwnerId, scheduleScope, task.id]);
 
   useEffect(() => {

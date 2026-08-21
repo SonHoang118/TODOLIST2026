@@ -1,3 +1,4 @@
+import * as Ably from "ably";
 import { after } from "next/server";
 import { sql } from "../../../lib/database";
 import { dispatchDuePushNotifications, queuePushNotification } from "../../../lib/push-notifications";
@@ -32,6 +33,17 @@ function relatedUserIds(task: Task, context: { scope: ScheduleScope; ownerId: nu
 
 function commentPreview(content: string): string {
   return content.length > 120 ? `${content.slice(0, 117)}...` : content;
+}
+
+function channelName(context: { scope: ScheduleScope; ownerId: number | null }): string {
+  return context.scope === "COMPANY" ? "schedule:company" : `schedule:user:${context.ownerId}`;
+}
+
+async function publishCommentChange(context: { scope: ScheduleScope; ownerId: number | null }, taskId: number): Promise<void> {
+  const key = process.env.ABLY_API_KEY;
+  if (!key) return;
+  const client = new Ably.Rest(key);
+  await client.channels.get(channelName(context)).publish("comments.changed", { taskId });
 }
 
 async function ensureTables() {
@@ -99,6 +111,11 @@ export async function POST(request: Request) {
   const rows = await sql`INSERT INTO schedule_task_comments (scope_key, task_id, author_user_id, author_name, author_avatar, content)
     VALUES (${context.scopeKey}, ${body.taskId}, ${body.authorUserId}, ${users[0].name}, ${users[0].avatar}, ${content})
     RETURNING id, task_id, author_user_id, author_name, author_avatar, content, created_at` as CommentRow[];
+  try {
+    await publishCommentChange(context, body.taskId!);
+  } catch (error) {
+    console.error("Unable to publish comment change.", error);
+  }
   const recipients = relatedUserIds(task, context, body.authorUserId!);
   if (recipients.length > 0) {
     const title = `Tin nhắn mới trong: ${task.title}`;
@@ -140,5 +157,10 @@ export async function DELETE(request: Request) {
     WHERE id = ${body.commentId} AND scope_key = ${context.scopeKey} AND task_id = ${body.taskId} AND author_user_id = ${body.authorUserId}
     RETURNING id` as Array<{ id: string | number }>;
   if (!deleted[0]) return Response.json({ error: "Comment not found or cannot be deleted." }, { status: 404 });
+  try {
+    await publishCommentChange(context, body.taskId!);
+  } catch (error) {
+    console.error("Unable to publish comment deletion.", error);
+  }
   return Response.json({ deletedId: Number(deleted[0].id) });
 }
