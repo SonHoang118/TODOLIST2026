@@ -36,6 +36,15 @@ type JobRow = {
 type UserRow = { id: string | number };
 type TodayTaskRow = { title: string };
 
+export type DailyReminderResult = {
+  checked: number;
+  queued: number;
+  empty: number;
+  alreadyQueued: number;
+  beforeSix: boolean;
+  localDate: string;
+};
+
 function targetUrlForJob(job: JobRow): string {
   if (job.task_id === null || job.task_scope === null) return job.target_url;
   const params = new URLSearchParams({
@@ -125,34 +134,59 @@ function vietnamNow(): { date: string; hour: number; minute: number; absDay: num
   return { date, hour: Number(parts.hour), minute: Number(parts.minute), absDay: Math.round((localMidnight - epoch) / 86_400_000) };
 }
 
-async function queueDailyTodayTasks(): Promise<void> {
+async function queueDailyTodayTasks(): Promise<DailyReminderResult> {
   const now = vietnamNow();
+  const result: DailyReminderResult = {
+    checked: 0,
+    queued: 0,
+    empty: 0,
+    alreadyQueued: 0,
+    beforeSix: now.hour < 6,
+    localDate: now.date,
+  };
   // The scheduler normally runs at 06:00. If GitHub delays a run, send once
   // later that same day instead of silently missing the reminder.
-  if (now.hour < 6) return;
+  if (result.beforeSix) return result;
   const users = await sql`SELECT id FROM schedule_users` as UserRow[];
   for (const user of users) {
     const userId = Number(user.id);
-    const inserted = await sql`INSERT INTO schedule_daily_push_deliveries (user_id, local_date)
-      VALUES (${userId}, ${now.date}) ON CONFLICT DO NOTHING RETURNING user_id` as UserRow[];
-    if (inserted.length === 0) continue;
+    result.checked++;
     const rows = await sql`SELECT data->>'title' AS title FROM schedule_task_entries
       WHERE scope_key = ${`USER:${userId}`}
         AND (data->>'absDay')::integer <= ${now.absDay}
         AND COALESCE((data->>'endAbsDay')::integer, (data->>'absDay')::integer) >= ${now.absDay}
         AND COALESCE(data->>'status', 'PENDING') <> 'DONE'
       ORDER BY (data->>'slotIndex')::integer` as TodayTaskRow[];
-    if (rows.length === 0) continue;
+    // Do not claim today's delivery when there is nothing to send. This keeps
+    // later cron runs eligible if a task is added after 06:00.
+    if (rows.length === 0) {
+      result.empty++;
+      continue;
+    }
+    const inserted = await sql`INSERT INTO schedule_daily_push_deliveries (user_id, local_date)
+      VALUES (${userId}, ${now.date}) ON CONFLICT DO NOTHING RETURNING user_id` as UserRow[];
+    if (inserted.length === 0) {
+      result.alreadyQueued++;
+      continue;
+    }
     const names = rows.slice(0, 3).map((task) => task.title).join(" • ");
     const rest = rows.length > 3 ? ` và ${rows.length - 3} việc khác` : "";
-    await queuePushNotification(userId, { title: `Hôm nay có ${rows.length} việc cần làm`, body: `${names}${rest}`, url: "/schedule" }, 0);
+    try {
+      await queuePushNotification(userId, { title: `Hôm nay có ${rows.length} việc cần làm`, body: `${names}${rest}`, url: "/schedule" }, 0);
+    } catch (error) {
+      // Let the next cron run retry if creating the push job failed.
+      await sql`DELETE FROM schedule_daily_push_deliveries WHERE user_id = ${userId} AND local_date = ${now.date}`;
+      throw error;
+    }
+    result.queued++;
   }
+  return result;
 }
 
-export async function dispatchDuePushNotifications(): Promise<{ sent: number; removed: number }> {
+export async function dispatchDuePushNotifications(): Promise<{ sent: number; removed: number; daily: DailyReminderResult }> {
   if (!configureWebPush()) throw new Error("VAPID is not configured.");
   await ensurePushTables();
-  await queueDailyTodayTasks();
+  const daily = await queueDailyTodayTasks();
   const jobs = await sql`SELECT id, recipient_user_id, title, body, target_url, kind, actor_name, task_id, task_scope, task_owner_user_id, in_app_delivered_at
     FROM schedule_push_jobs
     WHERE sent_at IS NULL AND available_at <= NOW()
@@ -188,5 +222,5 @@ export async function dispatchDuePushNotifications(): Promise<{ sent: number; re
     if (retry) await sql`UPDATE schedule_push_jobs SET attempts = attempts + 1 WHERE id = ${job.id}`;
     else await sql`UPDATE schedule_push_jobs SET sent_at = NOW(), attempts = attempts + 1 WHERE id = ${job.id}`;
   }
-  return { sent, removed };
+  return { sent, removed, daily };
 }

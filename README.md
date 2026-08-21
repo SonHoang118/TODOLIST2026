@@ -129,4 +129,22 @@ Trong GitHub repository, thêm hai Actions secrets:
 
 Workflow GitHub Actions chạy mỗi 5 phút, tạo thông báo trong app và gửi thông báo đẩy cho các cập nhật task đến hạn; lúc 06:00 (giờ Việt Nam) gửi danh sách task chưa hoàn thành của lịch cá nhân. GitHub có thể chạy lệch vài phút, nên các cập nhật task thường đến sau khoảng 5–10 phút.
 
+### Kiểm tra nhắc lịch 06:00
+
+Nên test trên môi trường Preview/Staging vì endpoint dispatch sẽ gửi các push job đang đến hạn. Sau 06:00 giờ Việt Nam, tạo một tài khoản thử đã bật thông báo rồi gọi:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:PUSH_CRON_SECRET" }
+Invoke-RestMethod -Method Post -Uri "$env:PUSH_DISPATCH_URL" -Headers $headers
+```
+
+Response có trường `daily`: `queued` là số nhắc 06:00 vừa được tạo, `empty` là số người dùng không có task hôm nay nên không được nhắc, và `alreadyQueued` là số người đã được tạo nhắc trong ngày. Gọi lại lần hai phải thấy `queued: 0` để xác nhận không gửi trùng.
+
+Kiểm tra hai tình huống sau với tài khoản thử:
+
+1. Không có task chưa hoàn thành trong hôm nay: `empty` tăng và điện thoại không nhận thông báo.
+2. Có task hôm nay ở trạng thái `PENDING` hoặc `IN_PROGRESS`: `queued` tăng, điện thoại nhận đúng một thông báo; task `DONE` không được tính.
+
+Nếu test trước 06:00, response sẽ có `beforeSix: true` và không tạo nhắc. Có thể chạy workflow thủ công tại **GitHub Actions → Dispatch push notifications → Run workflow** thay cho lệnh PowerShell.
+
 Trên điện thoại, đăng nhập đúng tài khoản, mở **Cài đặt** và bấm **Bật thông báo**. Với iPhone/iPad, trước đó cần thêm DHS To do vào Màn hình chính rồi mở từ icon của app.
