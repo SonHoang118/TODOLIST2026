@@ -96,6 +96,8 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
   const confirmedUsers = task.confirmedByUserIds
     .map((id) => users.find((user) => user.id === id))
     .filter((user): user is SessionUser => Boolean(user));
+  const visibleConfirmedUsers = confirmedUsers.length > 5 ? confirmedUsers.slice(0, 4) : confirmedUsers.slice(0, 5);
+  const hiddenConfirmedCount = confirmedUsers.length - visibleConfirmedUsers.length;
   const canAcceptTask = !isCompanySchedule
     && task.status === "PENDING"
     && Boolean(task.assignedFromName)
@@ -251,9 +253,14 @@ export function TaskEditModal({ task, isCompanySchedule, scheduleScope, schedule
                 <svg viewBox="0 0 20 20" fill="none" className={`h-5 w-5 shrink-0 transition-transform ${confirmersOpen ? "rotate-180" : ""}`} aria-hidden><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 <span>Đã xác nhận</span>
                 <div className="flex -space-x-2">
-                  {confirmedUsers.slice(0, 3).map((user) => (
+                  {visibleConfirmedUsers.map((user) => (
                     <img key={user.id} src={user.avatar} alt={user.name} title={user.name} className="h-6 w-6 rounded-full border-2 border-[#242424] object-cover" />
                   ))}
+                  {hiddenConfirmedCount > 0 && (
+                    <span className="relative flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-[#242424] bg-zinc-600 px-1 text-[10px] font-bold text-white" title={`${hiddenConfirmedCount} người khác`}>
+                      +{hiddenConfirmedCount}
+                    </span>
+                  )}
                 </div>
               </button>
               {confirmersOpen && (
