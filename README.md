@@ -121,6 +121,8 @@ Thêm các biến sau vào **Vercel → Project → Settings → Environment Var
 - `VAPID_PRIVATE_KEY`: `privateKey` từ lệnh trên.
 - `VAPID_SUBJECT`: ví dụ `mailto:email-cua-ban@example.com`.
 - `PUSH_CRON_SECRET`: một chuỗi ngẫu nhiên dài.
+- `DAILY_PUSH_HOUR`: giờ gửi nhắc theo giờ Việt Nam, mặc định `6`.
+- `DAILY_PUSH_MINUTE`: phút gửi nhắc, mặc định `0`.
 
 Trong GitHub repository, thêm hai Actions secrets:
 
@@ -130,6 +132,12 @@ Trong GitHub repository, thêm hai Actions secrets:
 Workflow GitHub Actions chạy mỗi 5 phút, tạo thông báo trong app và gửi thông báo đẩy cho các cập nhật task đến hạn; lúc 06:00 (giờ Việt Nam) gửi danh sách task chưa hoàn thành của lịch cá nhân. GitHub có thể chạy lệch vài phút, nên các cập nhật task thường đến sau khoảng 5–10 phút.
 
 ### Kiểm tra nhắc lịch 06:00
+
+Kiểm tra biến môi trường local, định dạng VAPID và trạng thái hàng đợi trong Neon (lệnh không hiển thị secret hoặc nội dung task):
+
+```powershell
+npm run check:push
+```
 
 Nên test trên môi trường Preview/Staging vì endpoint dispatch sẽ gửi các push job đang đến hạn. Sau 06:00 giờ Việt Nam, tạo một tài khoản thử đã bật thông báo rồi gọi:
 
@@ -145,6 +153,8 @@ Kiểm tra hai tình huống sau với tài khoản thử:
 1. Không có task chưa hoàn thành trong hôm nay: `empty` tăng và điện thoại không nhận thông báo.
 2. Có task hôm nay ở trạng thái `PENDING` hoặc `IN_PROGRESS`: `queued` tăng, điện thoại nhận đúng một thông báo; task `DONE` không được tính.
 
-Nếu test trước 06:00, response sẽ có `beforeSix: true` và không tạo nhắc. Có thể chạy workflow thủ công tại **GitHub Actions → Dispatch push notifications → Run workflow** thay cho lệnh PowerShell.
+Nếu test trước giờ đã cấu hình, response sẽ có `beforeScheduledTime: true` và không tạo nhắc. Có thể chạy workflow thủ công tại **GitHub Actions → Dispatch push notifications → Run workflow** thay cho lệnh PowerShell.
+
+Để test tự động lúc 11:00, đặt `DAILY_PUSH_HOUR=11` và `DAILY_PUSH_MINUTE=0` trên Vercel rồi redeploy trước 11:00. Workflow vẫn chạy mỗi 5 phút nên thông báo thường đến trong khoảng 11:00–11:10. Response dispatch cho biết giờ đang áp dụng qua `daily.scheduledTime`. Sau khi test, đổi lại `6` và `0`, rồi redeploy. Cơ chế chống trùng theo ngày vẫn áp dụng: tài khoản đã nhận nhắc trong ngày sẽ không nhận lần nữa khi đổi giờ.
 
 Trên điện thoại, đăng nhập đúng tài khoản, mở **Cài đặt** và bấm **Bật thông báo**. Với iPhone/iPad, trước đó cần thêm DHS To do vào Màn hình chính rồi mở từ icon của app.

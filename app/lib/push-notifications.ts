@@ -41,7 +41,8 @@ export type DailyReminderResult = {
   queued: number;
   empty: number;
   alreadyQueued: number;
-  beforeSix: boolean;
+  beforeScheduledTime: boolean;
+  scheduledTime: string;
   localDate: string;
 };
 
@@ -134,19 +135,30 @@ function vietnamNow(): { date: string; hour: number; minute: number; absDay: num
   return { date, hour: Number(parts.hour), minute: Number(parts.minute), absDay: Math.round((localMidnight - epoch) / 86_400_000) };
 }
 
+function dailyReminderTime(): { hour: number; minute: number; label: string } {
+  const parsedHour = Number(process.env.DAILY_PUSH_HOUR ?? "6");
+  const parsedMinute = Number(process.env.DAILY_PUSH_MINUTE ?? "0");
+  const hour = Number.isInteger(parsedHour) && parsedHour >= 0 && parsedHour <= 23 ? parsedHour : 6;
+  const minute = Number.isInteger(parsedMinute) && parsedMinute >= 0 && parsedMinute <= 59 ? parsedMinute : 0;
+  return { hour, minute, label: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}` };
+}
+
 async function queueDailyTodayTasks(): Promise<DailyReminderResult> {
   const now = vietnamNow();
+  const scheduled = dailyReminderTime();
+  const beforeScheduledTime = now.hour < scheduled.hour || (now.hour === scheduled.hour && now.minute < scheduled.minute);
   const result: DailyReminderResult = {
     checked: 0,
     queued: 0,
     empty: 0,
     alreadyQueued: 0,
-    beforeSix: now.hour < 6,
+    beforeScheduledTime,
+    scheduledTime: scheduled.label,
     localDate: now.date,
   };
-  // The scheduler normally runs at 06:00. If GitHub delays a run, send once
+  // The scheduler normally runs at DAILY_PUSH_HOUR:DAILY_PUSH_MINUTE. If GitHub delays a run, send once
   // later that same day instead of silently missing the reminder.
-  if (result.beforeSix) return result;
+  if (result.beforeScheduledTime) return result;
   const users = await sql`SELECT id FROM schedule_users` as UserRow[];
   for (const user of users) {
     const userId = Number(user.id);

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:push": "node --env-file=.env.local scripts/check-push-config.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
