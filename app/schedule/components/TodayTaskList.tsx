@@ -10,17 +10,20 @@ interface TodayTaskListProps {
   todayAbsDay: number;
   isCompanySchedule: boolean;
   isViewingOwnSchedule: boolean;
+  sessionUser: SessionUser | null;
   viewingUser: SessionUser | null;
   users: SessionUser[];
   theme: ScheduleTheme;
   onComplete: (taskId: number) => void;
+  onAccept: (taskId: number) => void;
+  onConfirm: (taskId: number) => void;
   onEdit: (taskId: number) => void;
   onRemove: (taskId: number) => void;
 }
 
 const COMPANY_AVATAR_URL = "https://res.cloudinary.com/dbwtitpvi/image/upload/v1787320357/logo2_a2niqo.jpg";
 
-export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewingOwnSchedule, viewingUser, users, theme, onComplete, onEdit, onRemove }: TodayTaskListProps) {
+export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewingOwnSchedule, sessionUser, viewingUser, users, theme, onComplete, onAccept, onConfirm, onEdit, onRemove }: TodayTaskListProps) {
   const todayTasks = tasks
     .filter((task) => task.absDay <= todayAbsDay && (task.endAbsDay ?? task.absDay) >= todayAbsDay)
     .sort((first, second) => first.slotIndex - second.slotIndex);
@@ -74,7 +77,11 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewing
               const time = isMultiDay
                 ? `${absDayToDate(task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(task.slotIndex)} → ${absDayToDate(task.endAbsDay ?? task.absDay).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${slotLabel(getMultiDayEndSlot(task))}`
                 : `${slotLabel(task.slotIndex)} – ${slotLabel(task.slotIndex + task.span)}`;
-              const canComplete = isViewingOwnSchedule && !isReadOnly;
+              const isAwaitingAcceptance = task.status === "PENDING" && Boolean(task.assignedFromName);
+              const canAccept = isViewingOwnSchedule && isAwaitingAcceptance && !isOverdue && !isReadOnly;
+              const canComplete = isViewingOwnSchedule && !isAwaitingAcceptance && !isOverdue && !isReadOnly;
+              const hasConfirmed = sessionUser !== null && task.confirmedByUserIds.includes(sessionUser.id);
+              const canConfirm = isCompanySchedule && sessionUser !== null && !hasConfirmed && !isOverdue && !isReadOnly;
               const confirmedUsers = task.confirmedByUserIds
                 .map((userId) => users.find((user) => user.id === userId))
                 .filter((user): user is SessionUser => user !== undefined);
@@ -83,7 +90,7 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewing
               return (
                 <article key={task.id} onClick={() => { if (canComplete) onComplete(task.id); }} className={`schedule-list-card group relative rounded-2xl border ${isOverdue ? (isCompanySchedule ? "border-[3px] border-zinc-500" : "border-[3px] border-red-600") : theme.border} ${theme.hdrBg} p-4 ${isOverdue ? "pb-7" : ""} ${canComplete ? "cursor-pointer" : ""} shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg`} style={{ animationDelay: `${index * 45}ms` }}>
                   <div className="flex items-start gap-3">
-                    {!isOverdue && isViewingOwnSchedule && <button type="button" disabled={!canComplete} onClick={(event) => { event.stopPropagation(); if (canComplete) onComplete(task.id); }} aria-label={isDone ? (isReadOnly ? "Đã hoàn thành" : "Bỏ hoàn thành") : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-400 bg-emerald-500 text-white` : "border-zinc-500 hover:border-violet-400"}`}>{isDone && "✓"}</button>}
+                    {!isAwaitingAcceptance && !isOverdue && isViewingOwnSchedule && <button type="button" disabled={!canComplete} onClick={(event) => { event.stopPropagation(); if (canComplete) onComplete(task.id); }} aria-label={isDone ? (isReadOnly ? "Đã hoàn thành" : "Bỏ hoàn thành") : "Đánh dấu hoàn thành"} className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${isDone ? `${isReadOnly ? "cursor-not-allowed " : ""}border-emerald-400 bg-emerald-500 text-white` : "border-zinc-500 hover:border-violet-400"}`}>{isDone && "✓"}</button>}
                     <div className="min-w-0 flex-1">
                       <p className={`font-semibold ${isDone && !isCompanySchedule ? "text-zinc-500 line-through" : ""}`}>{task.title}</p>
                       {!isCompanySchedule && <div className="mt-2">
@@ -113,6 +120,10 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewing
                       <button type="button" onClick={(event) => { event.stopPropagation(); onRemove(task.id); }} className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-xs font-semibold text-rose-500 transition hover:bg-rose-500/20">Xóa</button>
                     </div>
                   </div>
+                  {(canAccept || canConfirm) && <div className={`mt-3 flex justify-end border-t ${theme.border} pt-3`}>
+                    {canAccept && <button type="button" onClick={(event) => { event.stopPropagation(); onAccept(task.id); }} className="rounded-xl border border-amber-300/70 bg-amber-400 px-4 py-2 text-xs font-bold text-zinc-900 shadow-sm transition hover:bg-amber-300">Nhận</button>}
+                    {canConfirm && <button type="button" onClick={(event) => { event.stopPropagation(); onConfirm(task.id); }} className="rounded-xl border border-emerald-300/70 bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-400">Xác nhận</button>}
+                  </div>}
                   {isOverdue && <div className={`absolute bottom-0 left-0 right-0 rounded-b-xl py-1 text-center text-[10px] font-bold text-white ${isCompanySchedule ? "bg-zinc-600" : "bg-red-600"}`}>{isCompanySchedule ? "ĐÃ HẾT HẠN" : "QUÁ HẠN"}</div>}
                 </article>
               );

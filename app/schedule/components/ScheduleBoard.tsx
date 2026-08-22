@@ -1595,10 +1595,13 @@ export default function SchedulePage() {
           todayAbsDay={todayAbsDay}
           isCompanySchedule={isCompanySchedule}
           isViewingOwnSchedule={isViewingOwnSchedule}
+          sessionUser={sessionUser}
           viewingUser={usersForAuth.find((user) => user.id === authUserId) ?? null}
           users={usersForAuth}
           theme={th}
           onComplete={(taskId) => applyTaskAction("complete", taskId)}
+          onAccept={(taskId) => applyTaskAction("accept", taskId)}
+          onConfirm={(taskId) => applyTaskAction("confirm", taskId)}
           onEdit={(taskId) => applyTaskAction("edit", taskId)}
           onRemove={(taskId) => applyTaskAction("remove", taskId)}
         />
