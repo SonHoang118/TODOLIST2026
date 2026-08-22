@@ -28,11 +28,12 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewing
     .filter((task) => task.absDay <= todayAbsDay && (task.endAbsDay ?? task.absDay) >= todayAbsDay)
     .sort((first, second) => first.slotIndex - second.slotIndex);
   const completedCount = todayTasks.filter((task) => task.status === "DONE").length;
+  const isAllComplete = !isCompanySchedule && todayTasks.length > 0 && completedCount === todayTasks.length;
   const today = new Date();
 
   return (
     <section className={`schedule-view-enter flex-1 overflow-y-auto px-4 py-5 sm:px-6 ${theme.root}`}>
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl pb-28">
         <div className={`rounded-3xl border ${theme.border} bg-gradient-to-br from-violet-600 to-indigo-700 p-5 text-white shadow-xl shadow-violet-950/20`}>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-100">Việc hôm nay</p>
           <div className="mt-2 flex items-end justify-between gap-4">
@@ -54,8 +55,22 @@ export function TodayTaskList({ tasks, todayAbsDay, isCompanySchedule, isViewing
                 </div>
               ) : null}
             </div>
-            <div className="rounded-2xl bg-white/15 px-3 py-2 text-right backdrop-blur-sm">
-              <p className="text-xl font-bold tabular-nums">{isCompanySchedule ? `${todayTasks.length} task` : `${completedCount}/${todayTasks.length}`}</p>
+            <div className={`today-progress relative isolate overflow-visible rounded-2xl px-3 py-2 text-right backdrop-blur-sm ${isAllComplete ? "today-progress-complete bg-emerald-400/25" : "bg-white/15"}`}>
+              {isAllComplete && <div className="today-progress-burst pointer-events-none absolute inset-0" aria-hidden="true">
+                {Array.from({ length: 10 }, (_, index) => <span key={index} style={{ "--burst-index": index } as React.CSSProperties} />)}
+              </div>}
+              <div className="relative flex h-7 items-center justify-end text-xl font-bold tabular-nums">
+                {isCompanySchedule ? <span>{todayTasks.length} task</span> : <>
+                  <span className="sr-only" aria-live="polite">{completedCount}/{todayTasks.length} hoàn thành</span>
+                  <span className="today-progress-number" aria-hidden="true">
+                    <span className="today-progress-number-track" style={{ transform: `translateY(-${completedCount * 1.75}rem)` }}>
+                      {Array.from({ length: todayTasks.length + 1 }, (_, value) => <span key={value}>{value}</span>)}
+                    </span>
+                  </span>
+                  <span aria-hidden="true">/{todayTasks.length}</span>
+                  {isAllComplete && <span className="today-progress-check ml-1" aria-hidden="true">✓</span>}
+                </>}
+              </div>
               <p className="text-[10px] font-medium uppercase tracking-wide text-violet-100">{isCompanySchedule ? "Hôm nay" : "Hoàn thành"}</p>
             </div>
           </div>
