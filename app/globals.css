@@ -102,7 +102,7 @@ body {
 @keyframes todayProgressCelebrate {
   0% { transform: scale(1); box-shadow: 0 0 0 rgba(52, 211, 153, 0); }
   38% { transform: scale(1.14) rotate(-2deg); box-shadow: 0 0 28px rgba(251, 191, 36, 0.85); }
-  68% { transform: scale(1.06) rotate(1deg); }
+  68% { transform: scale(1.06) rotate(-0.65deg); }
   100% { transform: scale(1); box-shadow: 0 0 18px rgba(52, 211, 153, 0.55); }
 }
 
