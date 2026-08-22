@@ -19,18 +19,38 @@ export function usePushNotifications(userId: number | null) {
   const [showPermissionIntro, setShowPermissionIntro] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
       queueMicrotask(() => setPermission("unsupported"));
       return;
     }
     void navigator.serviceWorker.register("/sw.js").then(async (registration) => {
+      if (cancelled) return;
       setPermission(Notification.permission);
       const subscription = await registration.pushManager.getSubscription();
-      setIsSubscribed(subscription !== null);
+      if (cancelled) return;
+
+      if (subscription !== null && userId !== null) {
+        const response = await fetch("/api/push/subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
+        });
+        if (!response.ok) throw new Error("Không thể chuyển thông báo sang tài khoản này.");
+      }
+
+      if (cancelled) return;
+      setIsSubscribed(subscription !== null && userId !== null);
       if (subscription === null && Notification.permission !== "denied" && localStorage.getItem(PERMISSION_INTRO_STORAGE_KEY) !== "true") {
         setShowPermissionIntro(true);
       }
-    }).catch(() => setError("Không thể khởi tạo thông báo trên thiết bị này."));
+    }).catch((reason) => {
+      if (cancelled) return;
+      setIsSubscribed(false);
+      setError(reason instanceof Error ? reason.message : "Không thể khởi tạo thông báo trên thiết bị này.");
+    });
+
+    return () => { cancelled = true; };
   }, [userId]);
 
   const enable = useCallback(async () => {
