@@ -2225,7 +2225,7 @@ export default function SchedulePage() {
           {notifications.length > 0 && <div className={`flex h-10 items-center justify-between gap-3 px-4 border-b ${th.border}`}>
             <div className="min-w-0">
               {unreadCount > 0 ? (
-                <button type="button" onClick={() => void markAllRead()} className="truncate text-xs font-medium text-violet-400 hover:text-violet-300">Đánh dấu tất cả là đã đọc</button>
+                <button type="button" disabled={isMarkingAllRead || isDeletingAll} onClick={() => void markAllRead()} className="truncate text-xs font-medium text-violet-400 hover:text-violet-300 disabled:cursor-wait disabled:opacity-60">Đánh dấu tất cả là đã đọc</button>
               ) : (
                 <p className={`flex items-center gap-2 truncate text-xs ${th.subtext}`}>
                   {isMarkingAllRead && <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" aria-label="Đang cập nhật" />}
@@ -2233,8 +2233,8 @@ export default function SchedulePage() {
                 </p>
               )}
             </div>
-            <button type="button" onClick={() => void deleteAll()} disabled={isDeletingAll} className="shrink-0 text-xs font-medium text-red-500 hover:text-red-400 disabled:cursor-wait disabled:opacity-60">
-              {isDeletingAll ? "Đang xóa..." : "Xóa thông báo"}
+            <button type="button" onClick={() => { if (window.confirm("Bạn có chắc muốn xóa tất cả thông báo không?")) void deleteAll(); }} disabled={isDeletingAll || isMarkingAllRead} className="inline-flex h-6 w-[92px] shrink-0 items-center justify-center text-xs font-medium text-red-500 hover:text-red-400 disabled:cursor-wait disabled:opacity-60">
+              {isDeletingAll ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-400 border-t-transparent" aria-label="Đang xóa thông báo" /> : "Xóa thông báo"}
             </button>
           </div>}
           <div className="flex-1 overflow-y-auto py-2">
