@@ -557,13 +557,13 @@ export default function SchedulePage() {
 
     if (scheduleScopeRef.current === "COMPANY") return;
 
-    let nextStatus: TaskStatus = "DONE";
+    if (!targetTask) return false;
+    const nextStatus: TaskStatus = targetTask.status === "DONE" ? "IN_PROGRESS" : "DONE";
     fn.current.setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
-      nextStatus = t.status === "DONE" ? "IN_PROGRESS" : "DONE";
       return withTaskAudit({ ...t, status: nextStatus }, sessionUserRef.current);
     }));
-    fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đang làm lại");
+    fn.current.setBadge(nextStatus === "DONE" ? "Đã hoàn thành" : "Đã bỏ hoàn thành");
     return;
   };
 
@@ -1134,7 +1134,6 @@ export default function SchedulePage() {
     setNotificationTaskToFocus({ taskId, scope: targetScope, ownerId: targetOwnerId });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
     if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
-    if (!infiniteScroll) setInfiniteScroll(true);
 
     params.delete("notificationTaskId");
     params.delete("notificationScope");
@@ -1358,11 +1357,10 @@ export default function SchedulePage() {
     setNotificationTaskToFocus({ taskId: notification.taskId, scope: targetScope, ownerId: targetScope === "USER" ? targetOwnerId : null });
     if (targetScope !== scheduleScope) setScheduleScope(targetScope);
     if (targetScope === "USER" && targetOwnerId !== authUserId) setAuthUserId(targetOwnerId);
-    if (!infiniteScroll) setInfiniteScroll(true);
   };
 
   useLayoutEffect(() => {
-    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || !infiniteScroll || isScheduleLoading || !isScheduleDataReady) return;
+    if (notificationTaskToFocus === null || viewMode !== "SCHEDULE" || isScheduleLoading || !isScheduleDataReady) return;
     if (scheduleScope !== notificationTaskToFocus.scope || (scheduleScope === "USER" && authUserId !== notificationTaskToFocus.ownerId)) return;
     const task = tasks.find((item) => item.id === notificationTaskToFocus.taskId);
     const container = scrollRef.current;
@@ -1387,6 +1385,11 @@ export default function SchedulePage() {
           }
         })();
       }
+      return;
+    }
+    if (!infiniteScroll && (task.absDay < viewStartAbsDay || task.absDay >= viewStartAbsDay + DAYS)) {
+      const currentWeekStartAbsDay = dateToAbsDay(getWeekDates(0)[0]);
+      setWeekOffset(Math.floor((task.absDay - currentWeekStartAbsDay) / DAYS));
       return;
     }
     if (isMultiDayTask(task) && !isMultiDayLaneExpanded) {
