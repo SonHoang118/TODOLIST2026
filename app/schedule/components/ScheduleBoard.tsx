@@ -2324,37 +2324,6 @@ export default function SchedulePage() {
                 />
               </div>
 
-              <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3`}>
-                <p className="text-sm font-medium">Thông báo trên điện thoại</p>
-                <p className={`mt-1 text-xs ${th.subtext}`}>
-                  {pushNotifications.permission === "unsupported"
-                    ? "Trình duyệt hoặc thiết bị này chưa hỗ trợ thông báo đẩy."
-                    : pushNotifications.permission === "checking"
-                      ? "Đang kiểm tra quyền thông báo của thiết bị..."
-                    : pushNotifications.permission === "denied"
-                      ? "Bạn đã chặn thông báo. Hãy bật lại quyền trong cài đặt trình duyệt."
-                    : pushNotifications.isSubscribed
-                        ? "Đã bật và đăng ký thiết bị nhận thông báo."
-                        : "Bật để nhận thông báo ngay cả khi DHS To do đang đóng."}
-                </p>
-                {sessionUser && pushNotifications.permission !== "unsupported" && pushNotifications.permission !== "denied" && pushNotifications.permission !== "checking" && (
-                  <button
-                    type="button"
-                    disabled={pushNotifications.isBusy}
-                    onClick={() => void (pushNotifications.isSubscribed ? pushNotifications.disable() : pushNotifications.enable())}
-                    className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${pushNotifications.isSubscribed ? "bg-zinc-700 text-zinc-200 hover:bg-zinc-600" : "bg-violet-600 text-white hover:bg-violet-500"}`}
-                  >
-                    {pushNotifications.isBusy ? "Đang xử lý..." : pushNotifications.isSubscribed ? "Tắt thông báo" : "Bật thông báo"}
-                  </button>
-                )}
-                {pushNotifications.permission === "granted" && (
-                  <button type="button" onClick={() => void pushNotifications.test()} className="mt-3 ml-2 rounded-lg bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-400 transition hover:bg-sky-500/25">
-                    Gửi thông báo thử
-                  </button>
-                )}
-                {pushNotifications.error && <p className="mt-2 text-[11px] text-rose-400">{pushNotifications.error}</p>}
-              </div>
-
               <div className={`mb-4 rounded-xl border ${th.border} px-3 py-3 grid gap-2`}>
                 <p className="text-sm font-medium">Chế độ lịch</p>
                 <div className={`grid grid-cols-2 rounded-lg p-1 ${th.inputBg}`}>
