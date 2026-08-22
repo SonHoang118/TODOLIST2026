@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { HexColorPicker } from "react-colorful";
 import {
   COLORS, DAY_W, DAY_W_MAX, DAY_W_MIN, DAY_W_STEP, DAYS, DEFAULT_TASK_BG,
@@ -32,7 +33,7 @@ import { useScheduleTasks } from "../lib/hooks/use-schedule-tasks";
 import { useScheduleUsers } from "../lib/hooks/use-schedule-users";
 import { useNotifications } from "../lib/hooks/use-notifications";
 import { usePushNotifications } from "../lib/hooks/use-push-notifications";
-import { readActiveUserId } from "../lib/session";
+import { ACTIVE_USER_STORAGE_KEY, readActiveUserId } from "../lib/session";
 import { TaskAvatar } from "./TaskAvatar";
 import { TaskEditModal } from "./TaskEditModal";
 import { TodayTaskList } from "./TodayTaskList";
@@ -125,6 +126,7 @@ function slotGradientTextColor(slot: number, isDark: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SchedulePage() {
+  const router = useRouter();
   const [currentTime, setCurrentTime]     = useState(() => new Date());
   const [viewMode, setViewMode] = useState<"SCHEDULE" | "TASK_LIST">("SCHEDULE");
   const [weekOffset, setWeekOffset]       = useState(0);
@@ -2527,6 +2529,20 @@ export default function SchedulePage() {
                   </button>
                 </div>
               )}
+
+              <div className={`mt-5 border-t ${th.border} pt-4`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm("Bạn có chắc muốn đăng xuất không?")) return;
+                    window.localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
+                    router.replace("/debug-account");
+                  }}
+                  className="w-full rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2.5 text-sm font-semibold text-rose-400 transition hover:bg-rose-500/20"
+                >
+                  Đăng xuất
+                </button>
+              </div>
             </div>
           </div>
       </div>
